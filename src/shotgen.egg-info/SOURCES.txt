@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+src/shotgen/__init__.py
+src/shotgen/migration.py
+src/shotgen/sampleshot.py
+src/shotgen.egg-info/PKG-INFO
+src/shotgen.egg-info/SOURCES.txt
+src/shotgen.egg-info/dependency_links.txt
+src/shotgen.egg-info/requires.txt
+src/shotgen.egg-info/top_level.txt

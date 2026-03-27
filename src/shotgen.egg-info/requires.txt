@@ -1,0 +1,9 @@
+numpy
+matplotlib
+scipy
+pylops
+h5py
+devito
+pytest
+segyio
+joblib
