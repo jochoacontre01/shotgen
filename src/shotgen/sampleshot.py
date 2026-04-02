@@ -1328,6 +1328,6 @@ def load_complex_graben():
     filepath = pathlib.Path(__file__).resolve().parents[2] / "assets/complex_graben.sgy"
 
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
-        seismic_data = np.array(f.trace.raw[:])/3.281
+        seismic_data = f.trace.raw[:][:,::-1]
     
     return seismic_data
