@@ -1,5 +1,5 @@
 src/shotgen.egg-info/
 *__*__*
-*/.vscode/
+*.vscode/
 data/
 assets/
