@@ -1,113 +1,177 @@
 
 # Shotgen
 
-A Python-based framework for simulating **2D acoustic wave propagation** and generating synthetic **shot records** for bone (osteo) seismic applications. This project leverages `PyLops` and `Devito` to perform high-performance wavefield modeling using the Born approximation.
+A Python-based framework for simulating **2D acoustic wave propagation** and generating synthetic **shot records** for seismic applications. This project leverages `Devito`, `PyLops`, and `DeepWave` to perform high-performance wavefield modeling using the Born approximation.
+
+## Overview
+
+**Shotgen** provides tools for:
+- Creating synthetic geological models with layered structures, velocity variations, and fault representations
+- Simulating 2D acoustic wave propagation in heterogeneous media
+- Generating synthetic seismic shot records for forward modeling and inversion studies
+- Performing Reverse-Time Migration (RTM) for seismic imaging
+- Processing and visualizing seismic data
 
 ## Installation
 
-To use the `shotgen` package from anywhere in your environment (including the `scripts/` folder), you should perform an **editable install**.
-
 ### Prerequisites
 
-Ensure you have a virtual environment active:
+- Python >= 3.12.3
+- A virtual environment (recommended)
+
+### Setup Instructions
+
+1. **Create and activate a virtual environment:**
 
 ```bash
-# Example for creating/activating a venv
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
 ```
 
-### Editable Install
-
-From the project root (`shotgen/`), run:
+2. **Editable Install from the project root:**
 
 ```bash
 pip install -e .
-
 ```
 
-> **Note:** This command requires the `pyproject.toml` to be located in the root directory. This links your source code to your Python environment, allowing changes in the code to be reflected immediately without re-installation.
+This command installs `shotgen` in editable mode, allowing changes to the source code to be reflected immediately without re-installation.
+
+3. **Verify installation:**
+
+```bash
+python -c "import shotgen; print('Shotgen installed successfully')"
+```
+
+---
+
+## Key Classes and Functions
+
+### `GeoModel` (sampleshot.py)
+A geological model generator for creating synthetic velocity structures:
+
+- **`__init__(nx, nz, v_base=4500)`** — Initialize a velocity model with dimensions (nx, nz) and base velocity
+- **`layered()`** — Generate a layered model with stratigraphy, velocity gradients, and fault structures
+- **`_create_layer_interface(base_depth, amplitude, wavelength, phase, slope)`** — Helper method to create wavy layer interfaces
+
+### `ReverseTimeMigration` (migration.py)
+Implements reverse-time migration imaging using Devito:
+
+- **`__init__(...)`** — Initialize RTM with velocity model, acquisition geometry, and imaging parameters
+- **`_create_model()`** — Create Devito Model objects for forward and smoothed velocity models
+- **`_create_geometry()`** — Define source and receiver geometries
+- **`_setup_solver()`** — Configure the acoustic wave solver
+
+### `LoadShot` (sampleshot.py)
+Utility class for loading and managing seismic shot records from HDF5 files
 
 ---
 
 ## Project Structure
 
-The project follows the **src-layout** convention to ensure clean packaging and reliable imports.
-
 ```text
-osteo-seismic_ultrasound/
-├── pyproject.toml           # Package metadata and dependencies
-├── README.md                # Project documentation
-├── data/                    # Storage for generated .hdf5 shot records
-├── src/
-│   └── shotgen/             # Main package directory
-│       ├── src/
-│       │   └── shotgen/     # Actual module source
-│       │       ├── __init__.py
-│       │       └── sampleshot.py
-│       └── README.md
-├── scripts/                 # Analysis and utility scripts
-└── ...
-
+shotgen/
+├── pyproject.toml                      # Package metadata and dependencies
+├── README.md                           # Project documentation
+├── assets/                             # Sample SEG-Y data files
+│   └── complex_graben.sgy
+├── data/                               # Generated shot records (HDF5 format)
+├── examples/                           # Example scripts
+│   ├── cmp_stacking.py                # Common Mid-Point stacking example
+│   ├── generate_record.py             # Shot record generation example
+│   ├── reverse_time_migration.py      # RTM imaging example
+│   └── test_plot_shotrecord.py        # Visualization example
+└── shotgen/                            # Main package
+    ├── sampleshot.py                  # Geological models and shot generation
+    └── migration.py                   # Reverse-Time Migration implementation
 ```
 
 ---
 
-## Usage
+## Usage Examples
 
-The package provides two main classes in the script `sampleshot.py`: `ShotRecord` for simulation and `LoadShot` for analysis.
-
-### 1. Generating a Shot Record
+### Example 1: Create a Layered Geological Model
 
 ```python
-from shotgen.sampleshot import ShotRecord
+from shotgen.sampleshot import GeoModel
 
-# Initialize grid (nx, nz) and survey (receivers, sources)
-sim = ShotRecord(nx=200, nz=100, n_receivers=50, n_sources=5)
+# Initialize model with 600 x-samples and 250 z-samples
+model = GeoModel(nx=600, nz=250, v_base=4500)
 
-# Setup a velocity model (e.g., a 4-layer model)
-sim.layer_model()
+# Generate layered structure with faults
+model.layered()
 
-# Run the Born modeling simulation (500ms)
-sim.run(ms=500)
-
-# Save the results to HDF5
-sim.save_shot("test_shot.hdf5")
-
-# Visualize
-sim.show_shot()
-
+# Access velocity field
+velocity = model.vel
 ```
 
-### 2. Loading and Plotting Data
+### Example 2: Perform Reverse-Time Migration
 
 ```python
-from shotgen.sampleshot import LoadShot
+from shotgen.migration import ReverseTimeMigration
+import numpy as np
 
-# Load data from the generated HDF5 file
-loader = LoadShot("data/test_shot.hdf5")
+# RTM configuration
+rtm = ReverseTimeMigration(
+    vp=velocity_model,
+    n_sources=6,
+    n_receivers=36,
+    origin=(0., 0.),
+    spacing=(25., 10.),
+    nbl=40,
+    t0=0.,
+    tn=0.240,
+    f0=100.,
+    smooth_sigma=5.0
+)
 
-# Plot the first shot (index 0)
-loader.plot(shot_number=0)
+# Perform migration (see examples/ for full implementation)
 ```
-## Metadata details
 
-All files generated by `ShotRecord` are HDF5 files with the following structure:
+### Example 3: Generate and Visualize Shot Records
 
-- **Receivers**: stored in a dataset called `receivers`
-- **Sources**: stored in a dataset called `sources`
-- **True velocity model**: stored in a dataset called `velocity_model`
-- **Smooth velocity model**: stored in a dataset called `smooth_velocity`
-- **Time vector**: stored in a dataset called `time`
-- **Shots data**: stored in a dataset called `shots_i`, where `i` is the number of the shot (i.e. it can contain multiple arrays beginning with `shot_`)
+See `examples/generate_record.py` and `examples/test_plot_shotrecord.py` for complete examples of:
+- Generating synthetic shot records
+- Plotting and visualizing seismic data
+- Reading/writing HDF5 shot records
 
 ---
 
-## Requirements
+## Dependencies
 
-* **NumPy**: Numerical arrays and operations.
-* **PyLops**: Linear operators for wave equation modeling.
-* **SciPy**: Image processing and filtering.
-* **h5py**: High-performance data storage.
-* **Matplotlib**: Visualization and plotting.
+Core dependencies (specified in `pyproject.toml`):
+- **devito** — High-performance finite-difference framework
+- **pylops** — Linear operators and inversion
+- **deepwave** — Deep learning for seismic modeling
+- **numpy** — Numerical computing
+- **scipy** — Scientific computing utilities
+- **matplotlib** — Visualization
+- **h5py** — HDF5 file handling
+- **scikit-image** — Image processing
+- **scienceplots** — Publication-quality plotting
+- **joblib** — Parallel processing
+- **segyio** — SEG-Y seismic file I/O
+- **tqdm** — Progress bars
+
+---
+
+## Citation & Author
+
+**Author:** Jesus Ochoa (Memorial University of Newfoundland)  
+**Email:** jochoacontre@mun.ca  
+**Version:** 1.0.0  
+**Status:** Alpha
+
+---
+
+## License
+
+See LICENSE file for details (if applicable).
+
+## References
+
+This project builds upon:
+- [Devito Project](https://www.devitoproject.org/) — Finite-difference modeling
+- [PyLops](https://pylops.readthedocs.io/) — Linear operators and seismic inversion
+- [DeepWave](https://deepwave.readthedocs.io/) — Deep learning for seismic modeling
+
+For additional references on wave propagation and seismic imaging, see the example notebooks and academic literature on acoustic wave equations and RTM.
