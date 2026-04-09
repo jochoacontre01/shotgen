@@ -1307,7 +1307,7 @@ class LoadShot:
         
 def load_marmousi():
     
-    filepath = pathlib.Path(__file__).resolve().parents[2] / "assets/vp_marmousi-ii.segy"
+    filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/vp_marmousi-ii.segy"
 
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = np.array(f.trace.raw[:])*1000
@@ -1316,7 +1316,7 @@ def load_marmousi():
 
 def load_sigsbee():
     
-    filepath = pathlib.Path(__file__).resolve().parents[2] / "assets/sigsbee2a_stratigraphy.sgy"
+    filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/sigsbee2a_stratigraphy.sgy"
 
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = np.array(f.trace.raw[:])/3.281
@@ -1325,7 +1325,7 @@ def load_sigsbee():
 
 def load_complex_graben():
     
-    filepath = pathlib.Path(__file__).resolve().parents[2] / "assets/complex_graben.sgy"
+    filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/complex_graben.sgy"
 
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = f.trace.raw[:][:,::-1]
