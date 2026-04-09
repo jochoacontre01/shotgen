@@ -2,3 +2,4 @@ shotgen/shotgen.egg-info/
 *.vscode/
 data/
 assets/
+*.swp
