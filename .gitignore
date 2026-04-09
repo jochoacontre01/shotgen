@@ -1,4 +1,5 @@
-shotgen/shotgen.egg-info/
+shotgen.egg-info/
+*__pycache__/
 *.vscode/
 data/
 assets/
