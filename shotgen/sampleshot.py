@@ -1314,14 +1314,19 @@ def load_marmousi():
     
     return seismic_data
 
-def load_sigsbee():
+def load_sigsbee(reflection_coeffs=False):
     
     filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/sigsbee2a_stratigraphy.sgy"
-
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = np.array(f.trace.raw[:])/3.281
     
-    return seismic_data
+    if reflection_coeffs:
+        filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/sigsbee2a_reflection_coefficients.sgy"
+        with segyio.open(filepath, "r", ignore_geometry=True) as f:
+            ref_coeffs = np.array(f.trace.raw[:])/3.281
+        
+        return seismic_data, ref_coeffs
+    return seismic_data, None
 
 def load_complex_graben():
     
