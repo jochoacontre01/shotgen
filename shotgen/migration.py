@@ -119,8 +119,9 @@ class ReverseTimeMigration:
     def run(self, save_wavefield=False, save_each=5):
         shots = []
         us = []
+        vs = []
         image = Function(name="image", grid=self.model.grid)
-        operator = self._imaging_operator(self.model, image)
+        operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
         
         for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
 
@@ -129,20 +130,28 @@ class ReverseTimeMigration:
             true_d, _, _ = self.solver.forward(vp=self.model.vp)
             smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
             
-            v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+            if save_wavefield:
+                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
+            else:
+                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
             
             residual = smooth_d.data - true_d.data
-            if save_wavefield:
-                us.append(u0.data.copy()[::save_each])
             shots.append(residual)
             operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=residual)
+            
+            if save_wavefield:
+                us.append(u0.data.copy()[::save_each])
+                vs.append(v.data.copy()[::save_each])
         
         self.shots = np.array(shots)
         self.us = np.array(us)
+        self.vs = np.array(vs)
         self.image = image.data
         return self.image
     
-    def migrate_from_data(self, shot_records):
+    def migrate_from_data(self, shot_records, save_wavefield=False, save_each=5):
+        us = []
+        vs = []
         image = Function(name="image", grid=self.model.grid)
         operator = self._imaging_operator(self.model, image)
         nshots = shot_records.shape[0]
@@ -153,16 +162,28 @@ class ReverseTimeMigration:
             # true_d, _, _ = self.solver.forward(vp=self.model.vp)
             _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
             
-            v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+            if save_wavefield:
+                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
+            else:
+                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
             
             operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=shot_records[i])
-        
+            
+            if save_wavefield:
+                us.append(u0.data.copy()[::save_each])
+                vs.append(v.data.copy()[::save_each])
+        self.us = np.array(us)
+        self.vs = np.array(vs)
         self.image = image.data
         return self.image
             
     
-    def _imaging_operator(self, model, image):
-        v = TimeFunction(name="v", grid=model.grid, time_order=self.time_order, space_order=self.space_order)
+    def _imaging_operator(self, model, image, save_wavefield=False):
+        if save_wavefield:
+            v = TimeFunction(name="v", grid=model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
+        else:
+            v = TimeFunction(name="v", grid=model.grid, time_order=self.time_order, space_order=self.space_order)
+
         u = TimeFunction(name="u", grid=model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
         
         eqn = model.m * v.dt2 - v.laplace + model.damp * v.dt.T
