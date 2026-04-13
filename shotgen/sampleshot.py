@@ -1124,11 +1124,11 @@ class ShotRecord:
         Parameters
         ----------
         name : str
-            Filename for the HDF5 file.
+            Filename for the HDF5 file. 
         overwrite : bool, optional
             Whether to overwrite the file if it already exists. Default is True.
         """
-        name = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), f"data/{name}")
+        # name = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), f"data/{name}")
         
         if os.path.exists(name) and not overwrite:
             print(f"Existing file with overwrite set to {overwrite} could not be created")
