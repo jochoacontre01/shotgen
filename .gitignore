@@ -1,5 +1,6 @@
-shotgen/shotgen.egg-info/
-*__*__*
+shotgen.egg-info/
+*__pycache__/
 *.vscode/
 data/
 assets/
+*.swp
