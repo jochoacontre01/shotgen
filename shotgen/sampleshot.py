@@ -744,7 +744,8 @@ class ShotRecord:
         shot_offset=1,
         smooth=5,
         noise_scale=5,
-        engine="pylops"
+        engine="pylops",
+        float_type=np.float32
     ):
         """
         Initialize the ShotRecord with grid dimensions and survey geometry.
@@ -777,6 +778,7 @@ class ShotRecord:
             Scale of the random noise to add to the shot data
         """
         self.engine = engine
+        self.float_type = float_type
         
         self.nx = nx 
         self.nz = nz 
@@ -784,8 +786,8 @@ class ShotRecord:
         self.dz = dz
         
         self.meters_per_cell = meters_per_cell
-        x = np.arange(0, nx, self.dx)#*self.dx
-        z = np.arange(0, nz, self.dz)#*self.dz
+        x = np.arange(0, nx, self.dx, dtype=self.float_type)#*self.dx
+        z = np.arange(0, nz, self.dz, dtype=self.float_type)#*self.dz
         
         self.n_receivers = n_receivers
         self.n_sources = n_sources
@@ -817,14 +819,14 @@ class ShotRecord:
         elif self.gather == "common midpoint":
             # Receivers
             nr = self.n_receivers
-            rx = np.linspace(self.rec_origin[0], x[-1], nr)
-            rz = np.ones(nr)*self.rec_origin[1]
+            rx = np.linspace(self.rec_origin[0], x[-1], nr, dtype=self.float_type)
+            rz = np.ones(nr, dtype=self.float_type)*self.rec_origin[1]
             self.recs = np.vstack((rx, rz)).T
 
             # sources
             ns = self.n_sources
-            sx = np.linspace(self.src_origin[0], x[-1], ns)
-            sz = np.ones(ns)*self.src_origin[1]
+            sx = np.linspace(self.src_origin[0], x[-1], ns, dtype=self.float_type)
+            sz = np.ones(ns, dtype=self.float_type)*self.src_origin[1]
             sources = np.vstack((sx, sz))
             self.sources = sources.T if sources.ndim >= 2 else sources.reshape((-1,2))
         
@@ -839,22 +841,22 @@ class ShotRecord:
         self.n_damping = n_damping
         self.src = None
         
-        self.X, self.Z = np.meshgrid(np.arange(self.nx), np.arange(self.nz), indexing='ij')
+        self.X, self.Z = np.meshgrid(np.arange(self.nx, dtype=self.float_type), np.arange(self.nz, dtype=self.float_type), indexing='ij')
     
     def _set_common_shot(self):
         
         rec_span = (self.n_receivers-1) * self.group_offset
         src_span = (self.n_sources-1) * self.shot_offset
         
-        sx = np.linspace(0, src_span, self.n_sources, dtype=float) + self.src_origin[0]
-        sz = np.ones(self.n_sources, dtype=float) * self.src_origin[1]
+        sx = np.linspace(0, src_span, self.n_sources, dtype=self.float_type) + self.src_origin[0]
+        sz = np.ones(self.n_sources, dtype=self.float_type) * self.src_origin[1]
         self.sources = np.vstack([sx, sz]).T
         
         rx_list = []
         for si in range(self.n_sources):
             src_dx = (si+1) * self.shot_offset
-            rec_x = np.linspace(0, rec_span, self.n_receivers, dtype=float) + src_dx + self.rec_origin[0]
-            rec_z = np.ones(self.n_receivers, dtype=float) * self.rec_origin[1]
+            rec_x = np.linspace(0, rec_span, self.n_receivers, dtype=self.float_type) + src_dx + self.rec_origin[0]
+            rec_z = np.ones(self.n_receivers, dtype=self.float_type) * self.rec_origin[1]
             rx_list.append(np.vstack([rec_x, rec_z]).T)
         
         self.recs = np.array(rx_list)
@@ -943,7 +945,7 @@ class ShotRecord:
         
         
         src_coordinates = np.empty((1, 2))
-        src_coordinates[0, :] = np.array(self._devito_model.domain_size) * 0.5
+        src_coordinates[0, :] = np.array(self._devito_model.domain_size, dtype=self.float_type) * 0.5
         src_coordinates[0, -1] = 0.0
         
         f0 = self.f0 / 1000 # to kHz
@@ -980,8 +982,8 @@ class ShotRecord:
                 us.append(u0.data.copy()[::save_each])
             shots.append(residual.T)
         
-        self.shot_run = np.array(shots)
-        self.us = np.array(us)
+        self.shot_run = np.array(shots, dtype=self.float_type)
+        self.us = np.array(us, dtype=self.float_type)
         self.src = self._devito_geometry.src.wavelet
         # self.dt = self._devito_model0.critical_dt
         
@@ -1006,7 +1008,7 @@ class ShotRecord:
                     space_order=self.fd_order,
                     nbl=self.n_damping,
                     f0=self.f0,
-                    dtype="float64"
+                    dtype=str(np.dtype(self.float_type))
                 )
                 return (Aop @ dv)[0]
 
@@ -1015,9 +1017,9 @@ class ShotRecord:
                 delayed(_process_single_shot)(si, s) 
                 for si, s in tqdm(enumerate(self.sources), desc="Source", total=self.n_sources)
             )
-            run = np.array(run)
+            run = np.array(run, dtype=self.float_type)
             
-            noise = np.random.normal(0, self.noise_scale, run.shape)
+            noise = np.random.normal(0, self.noise_scale, run.shape).astype(self.float_type)
             self.shot_run = run + noise
             
             # Re-instantiate the last operator to populate metadata (self.aop, self.src, self.dt)
@@ -1029,8 +1031,8 @@ class ShotRecord:
                 origin=(0,0),
                 spacing=(self.dx, self.dz),
                 vp=self.v0,
-                src_x=np.array([s[0]], dtype=float),
-                src_z=np.array([s[1]], dtype=float),
+                src_x=np.array([s[0]], dtype=self.float_type),
+                src_z=np.array([s[1]], dtype=self.float_type),
                 rec_x=self.recs[si][:, 0],
                 rec_z=self.recs[si][:, 1],
                 t0=0.0,
@@ -1039,7 +1041,7 @@ class ShotRecord:
                 space_order=self.fd_order,
                 nbl=self.n_damping,
                 f0=self.f0,
-                dtype="float64"
+                dtype=str(np.dtype(self.float_type))
             )
             self.src = self.aop.geometry.src.data[:, 0]
             self.dt = self.aop.geometry.dt
@@ -1060,7 +1062,7 @@ class ShotRecord:
                     space_order=self.fd_order,
                     nbl=self.n_damping,
                     f0=self.f0,
-                    dtype="float32"
+                    dtype=str(np.dtype(self.float_type))
                 )
             self.aop = Aop
             self.dt = self.aop.geometry.dt
