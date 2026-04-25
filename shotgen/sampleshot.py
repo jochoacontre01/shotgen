@@ -872,7 +872,7 @@ class ShotRecord:
         self.vel = model
         self._model_ready = True
         
-    def show_model(self, **kwargs):
+    def show_model(self, draw_recs=True, **kwargs):
         """
         Plot the current velocity model with source and receiver positions.
 
@@ -893,8 +893,9 @@ class ShotRecord:
                 
             plt.figure(figsize=(10, 5))
             im = plt.imshow(self.vel.T, extent=(self.origin[0], self.nx, self.nz, self.origin[-1]), **kwargs)
-            plt.scatter(recs_4plot_x, recs_4plot_z, marker="v", s=150, c="b", edgecolors="k")
-            plt.scatter(self.sources[:, 0], self.sources[:, 1], marker="*", s=150, c="r", edgecolors="k")
+            if draw_recs:
+                plt.scatter(recs_4plot_x, recs_4plot_z, marker="v", s=150, c="b", edgecolors="k")
+                plt.scatter(self.sources[:, 0], self.sources[:, 1], marker="*", s=150, c="r", edgecolors="k")
             cb = plt.colorbar(im)
             cb.set_label("[m/s]")
             plt.gca().set_aspect("equal")
