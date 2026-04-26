@@ -1,7 +1,7 @@
 from shotgen.sampleshot import ShotRecord, GeoModel, load_marmousi, load_sigsbee
 from time import perf_counter
 
-vp = load_sigsbee()
+vp, _ = load_sigsbee()
     
 vp = vp[1000:2500:2, 250:800:2] #vp[:7000:5, :2000:5]
 
@@ -18,7 +18,7 @@ shot = ShotRecord(
     dz=1,
     n_sources=6,
     n_receivers=48,
-    f0=100,
+    f0=250,
     # src_origin=(0,10),
     # rec_origin=(0,2),
     src_origin=(0.0,2.0),
@@ -27,7 +27,7 @@ shot = ShotRecord(
     shot_offset=45.0,
     gather="common shot",
     smooth=5,
-    noise_scale=0,
+    noise_scale=0.1,
     fd_order=8,
     n_damping=200,
     engine="pylops"
