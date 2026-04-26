@@ -1,6 +1,7 @@
 from shotgen.sampleshot import LoadShot
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
+import pathlib
 import numpy as np
 import h5py
 import os
@@ -159,7 +160,7 @@ def filter_2d(data, x, y):
 
 
 # ? Load shot record
-shot = LoadShot(r"/media/jochoa/DATA/Documentos/MUN Earth Sciences Masters Degree/100 - Thesis research project/Codes/osteo-seismic_ultrasound/src/shotgen/data/shot1.h5")
+shot = LoadShot(pathlib.Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_250hz_10goffset_45soffset_sigsbee.h5")
 
 shots = shot.shots
 nshots = shot.nshots
@@ -168,7 +169,7 @@ receivers = shot.receivers
 sources = shot.sources
 
 # ? Plot single shot
-shot.plot()
+shot.plot(plottype="wiggle", skip=1, normalize="trace", colormap="grey")
 
 # ? Plot and perform 2D FFT filter of shot
 # shots_filtered = np.zeros_like(shots, dtype=float)
