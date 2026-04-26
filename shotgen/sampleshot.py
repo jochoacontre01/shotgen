@@ -1,6 +1,7 @@
 import pathlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
+import seisplot
 import numpy as np
 from scipy.ndimage import gaussian_filter
 import pylops
@@ -743,7 +744,7 @@ class ShotRecord:
         group_offset=1,
         shot_offset=1,
         smooth=5,
-        noise_scale=5,
+        noise_scale=0.05,
         engine="pylops",
         float_type=np.float32
     ):
@@ -775,7 +776,7 @@ class ShotRecord:
         gather : str
             Type of shot gather. Can be 'common midpoint', 'common shot'.
         noise_scale : float
-            Scale of the random noise to add to the shot data
+            Scale of the random noise to add to the shot data as a percentage of the maximum shot amplitude
         """
         self.engine = engine
         self.float_type = float_type
@@ -1019,7 +1020,7 @@ class ShotRecord:
             )
             run = np.array(run, dtype=self.float_type)
             
-            noise = np.random.normal(0, self.noise_scale, run.shape).astype(self.float_type)
+            noise = np.random.normal(0, self.noise_scale*np.median(run), run.shape).astype(self.float_type)
             self.shot_run = run + noise
             
             # Re-instantiate the last operator to populate metadata (self.aop, self.src, self.dt)
@@ -1068,7 +1069,7 @@ class ShotRecord:
             self.dt = self.aop.geometry.dt
             
             run = Aop @ dv
-            noise = np.random.normal(0, self.noise_scale, run.shape)
+            noise = np.random.normal(0, self.noise_scale*np.median(run), run.shape)
             self.shot_run = run + noise
             self.src = self.aop.geometry.src.data[:, 0]
             
@@ -1261,29 +1262,11 @@ class LoadShot:
         shot_number : int, optional
             The index of the shot to plot. Default is 0.
         """
-        shots_stack = np.hstack([shot.T for shot in self.shots])
-        vmin = np.min(self.shots.flatten())
-        vmax = np.max(self.shots.flatten())
+        shots_stack = np.hstack([shot.T for shot in self.shots]).T
         
-        fig = plt.figure(figsize=(10, 6))
-        im = plt.imshow(
-            shots_stack, aspect="auto",
-            cmap="seismic",
-            extent=(
-                0,
-                shots_stack.shape[1],
-                self.time[-1] * 1E-3,
-                self.time[0] * 1E-3,
-            ),
-            norm=TwoSlopeNorm(0, vmin, vmax),
-            **kwargs
-            )
-    
-            
-        fig.suptitle("Shot gather", y=0.99)
-        plt.colorbar(im)
-        fig.supxlabel("rec [m]")
-        fig.supylabel("t [s]")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        fig, ax = seisplot.plot(shots_stack, fig=fig, ax=ax, linewidth=0.1, vaxis=self.time, hlabel="rec (m)", vlabel="Two-way travel time (s)", title="Shot gather", colorbar=True, **kwargs)
         plt.show()
         
         return plt.gca()
