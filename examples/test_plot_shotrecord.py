@@ -1,4 +1,4 @@
-from shotgen.sampleshot import LoadShot
+from shotgen.sampleshot import LoadShotRecord
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 import pathlib
@@ -160,7 +160,7 @@ def filter_2d(data, x, y):
 
 
 # ? Load shot record
-shot = LoadShot(pathlib.Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_250hz_10goffset_45soffset_sigsbee.h5")
+shot = LoadShotRecord(pathlib.Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_250hz_10goffset_45soffset_sigsbee.h5")
 
 shots = shot.shots
 nshots = shot.nshots

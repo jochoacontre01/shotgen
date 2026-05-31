@@ -515,7 +515,7 @@ class ShotRecord:
             
                 
 
-class LoadShot:
+class LoadShotRecord:
     """
     A class to load and visualize shot records from HDF5 files.
 
@@ -539,7 +539,7 @@ class LoadShot:
     
     def __init__(self, path):
         """
-        Initialize LoadShot and automatically load data from the given path.
+        Initialize LoadShotRecord and automatically load data from the given path.
 
         Parameters
         ----------

@@ -7,7 +7,7 @@ from examples.seismic.acoustic import AcousticWaveSolver
 import torch
 from deepwave import scalar_born
 from shotgen.sampleshot import load_marmousi
-from shotgen.sampleshot import GeoModel, LoadShot
+from shotgen.sampleshot import GeoModel, LoadShotRecord
 from scipy.ndimage import gaussian_filter, laplace
 from tqdm import tqdm
 import scienceplots

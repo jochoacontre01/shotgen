@@ -1,13 +1,13 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
-from shotgen.sampleshot import LoadShot
+from shotgen.sampleshot import LoadShotRecord
 from pathlib import Path
 
 
 shotpath = Path(__file__).resolve().parents[1] / "data/shot1_forCMP.h5"
 
-record = LoadShot(shotpath)
+record = LoadShotRecord(shotpath)
 
 data = record.shots
 init_velocity_model = record.smooth_velocity

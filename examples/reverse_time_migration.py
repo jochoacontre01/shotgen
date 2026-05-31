@@ -1,6 +1,6 @@
 
 from shotgen.migration import ReverseTimeMigration, ReverseTimeMigrationGPU
-from shotgen.sampleshot import GeoModel, LoadShot
+from shotgen.sampleshot import GeoModel, LoadShotRecord
 from pypalettes import create_cmap
 from pathlib import Path
 import numpy as np
@@ -84,7 +84,7 @@ except KeyboardInterrupt:
 # ? With deepwave propagation
 
 # pathfile = Path(__file__).resolve().parents[1] / "data/shot1.h5"
-# shotobject = LoadShot(pathfile)
+# shotobject = LoadShotRecord(pathfile)
 # data = shotobject.shots
 # init_velocity_model = shotobject.smooth_velocity
 # src_loc = shotobject.sources

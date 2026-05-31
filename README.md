@@ -61,7 +61,7 @@ Implements reverse-time migration imaging using Devito:
 - **`_create_geometry()`** — Define source and receiver geometries
 - **`_setup_solver()`** — Configure the acoustic wave solver
 
-### `LoadShot` (sampleshot.py)
+### `LoadShotRecord` (sampleshot.py)
 Utility class for loading and managing seismic shot records from HDF5 files
 
 ---
