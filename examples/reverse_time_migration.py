@@ -1,6 +1,7 @@
 
 from shotgen.migration import ReverseTimeMigration, ReverseTimeMigrationGPU
-from shotgen.sampleshot import GeoModel, LoadShotRecord
+from shotgen.sampleshot import LoadShotRecord
+from shotgen.models import GeoModel
 from pypalettes import create_cmap
 from pathlib import Path
 import numpy as np
@@ -32,7 +33,7 @@ vp = GeoModel(nx, nz).diapir()
 rtm = ReverseTimeMigration(
     vp=vp,
     n_receivers=nx,
-    n_sources=3,
+    n_sources=5,
     origin=(0,0),
     spacing=(1,1),
     nbl=nbl,
@@ -43,7 +44,7 @@ rtm = ReverseTimeMigration(
     space_order=8
 )
 
-migrated = rtm.run(save_wavefield=True, save_each=20)
+migrated = rtm.run(save_wavefield=False, save_each=20)
 
 vs = rtm.vs
 us = rtm.us
@@ -62,23 +63,9 @@ extent = [model.origin[0], model.origin[0] + domain_size[0],
             model.origin[1] + domain_size[1], model.origin[1]]
 
 plt.figure(figsize=(15,8))
-try:
-    while True:
-        correlation = 0
-        for u, v in zip(us[::-1], vs[::-1]):
-            correlation += laplace(u*v)
-            plt.cla()
-            plt.imshow(u[nbl:-nbl,nbl:-nbl].T, norm=TwoSlopeNorm(0,vmin,vmax), cmap="gray", aspect="equal", extent=extent, alpha=0.5)
-            plt.imshow(v[nbl:-nbl,nbl:-nbl].T, norm=TwoSlopeNorm(0,vmin,vmax), cmap="gray", aspect="equal", extent=extent, alpha=0.5)
-            plt.imshow(correlation[nbl:-nbl,nbl:-nbl].T, norm=TwoSlopeNorm(0,corrvmin,corrvmax), cmap="gray", aspect="equal", extent=extent, alpha=0.5)
-            # plt.imshow(vp.T, cmap="turbo", extent=extent, alpha=0.5)
-            plt.xlabel("X position (km)")
-            plt.ylabel("Depth (km)")
-            plt.tight_layout()
-            plt.draw()
-            plt.pause(0.1)
-except KeyboardInterrupt:
-    plt.show()
+plt.imshow(laplace(migrated)[nbl:-nbl,nbl:-nbl].T, cmap="gray", extent=extent, aspect="equal")
+plt.colorbar(label="Amplitude")
+plt.show()
 
 
 # ? With deepwave propagation
