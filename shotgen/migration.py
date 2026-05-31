@@ -18,31 +18,74 @@ matplotlib.rcParams.update({"font.size":14})
 
 class ReverseTimeMigration:
     """
-    The `ReverseTimeMigration` class build on top of `Devito`, `PyLops` and `shotgen` to create an RTM image.
+    The `ReverseTimeMigration` class builds on top of `Devito`, `PyLops` and `shotgen` to create an RTM image.
     
-    It reads a shot record from `shotgen` as a HDF5 file and pass all the necessary parameters to `Devito`'s `Model` class to generate a forward model. `Devito` then performs the backward simulation and generates the image.
-    
-    For a full example on RTM using `Devito`, see [the example](https://www.devitoproject.org/examples/seismic/tutorials/02_rtm.html) in their
+    It supports two modes:
+    1. Simulation Mode: Generates forward data and migrations internally from standard acquisition geometry.
+    2. Data Mode: Runs RTM directly using pre-recorded/simulated dataset parameters (e.g. from LoadShotRecord).
     """
     
     def __init__(
         self,
-        vp:np.ndarray,
-        n_sources:int,
-        n_receivers:int,
-        origin:tuple,
-        spacing:tuple,
-        nbl:int,
-        t0:float,
-        tn:float,
-        f0:float,
-        smooth_sigma:float,
+        vp: np.ndarray,
+        *args,
+        sources: np.ndarray = None,
+        receivers: np.ndarray = None,
+        shots: np.ndarray = None,
+        time: np.ndarray = None,
+        spacing: tuple = (1.0, 1.0),
+        nbl: int = 40,
+        smooth_sigma: float = 5.0,
+        f0: float = 25.0,
+        space_order: int = 4,
+        time_order: int = 2,
         dtype=np.float32,
-        space_order:int=4,
-        time_order:int=2,
+        **kwargs,
     ):
-        
-        self.vp = vp/1000
+        # Parse arguments to support both positional and keyword arguments for both modes
+        if sources is not None:
+            self.from_data = True
+        else:
+            self.from_data = False
+
+        if self.from_data:
+            # Keyword/data-driven signature
+            origin = kwargs.get("origin", (0.0, 0.0))
+            
+            n_sources = sources.shape[0]
+            n_receivers = receivers.shape[1] if receivers.ndim == 3 else receivers.shape[0]
+            
+            # Convert time vector (seconds) to ms
+            t0 = time[0] * 1000.0
+            tn = time[-1] * 1000.0
+        else:
+            # Simulation signature: parse n_sources, n_receivers, origin, t0, tn from positional args or kwargs.
+            # Other parameters like spacing, nbl, smooth_sigma, f0, space_order, time_order, dtype are already
+            # bound to local variables via the method signature.
+            n_sources = args[0] if len(args) > 0 else kwargs.get("n_sources")
+            n_receivers = args[1] if len(args) > 1 else kwargs.get("n_receivers")
+            origin = args[2] if len(args) > 2 else kwargs.get("origin")
+            
+            if len(args) > 3:
+                spacing = args[3]
+            if len(args) > 4:
+                nbl = args[4]
+                
+            t0 = args[5] if len(args) > 5 else kwargs.get("t0")
+            tn = args[6] if len(args) > 6 else kwargs.get("tn")
+            
+            if len(args) > 7:
+                f0 = args[7]
+            if len(args) > 8:
+                smooth_sigma = args[8]
+            if len(args) > 9:
+                dtype = args[9]
+            if len(args) > 10:
+                space_order = args[10]
+            if len(args) > 11:
+                time_order = args[11]
+
+        self.vp = vp / 1000
         self.v0 = gaussian_filter(self.vp, sigma=smooth_sigma)
         self.n_sources = n_sources
         self.n_receivers = n_receivers
@@ -53,22 +96,35 @@ class ReverseTimeMigration:
         self.time_order = time_order
         self.t0 = t0
         self.tn = tn
-        self.f0 = f0/1000
+        self.f0 = f0 / 1000  # Convert Hz/kHz to Devito kHz
         self.dtype = dtype
         
         self._create_model()
         
-        source_locations = np.empty((self.n_sources, 2), dtype=np.float32)
-        source_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_sources)
-        source_locations[:, 1] = 0.
-        self.sources = source_locations
-        
-        rec_locations = np.empty((self.n_receivers, 2))
-        rec_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_receivers)
-        rec_locations[:, 1] = 0.
-        self.receivers = rec_locations
-        
-        self._create_geometry()
+        if self.from_data:
+            self.sources = sources
+            self.receivers = receivers
+            # Transpose to (n_sources, nt, n_receivers) and convert to float32
+            self.shots = np.transpose(shots, (0, 2, 1)).astype(np.float32)
+            
+            self._create_geometry()
+            
+            # Resample geometry to the dataset's dt (in ms)
+            dt_data = (time[1] - time[0]) * 1000.0
+            self.geometry.resample(dt_data)
+        else:
+            source_locations = np.empty((self.n_sources, 2), dtype=np.float32)
+            source_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_sources)
+            source_locations[:, 1] = 0.
+            self.sources = source_locations
+            
+            rec_locations = np.empty((self.n_receivers, 2))
+            rec_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_receivers)
+            rec_locations[:, 1] = 0.
+            self.receivers = rec_locations
+            
+            self._create_geometry()
+            
         self._setup_solver()
         
     def _create_model(self):
@@ -100,9 +156,11 @@ class ReverseTimeMigration:
         src_coordinates = np.empty((1, 2))
         src_coordinates[0, :] = np.array(self.model.domain_size) * 0.5
         src_coordinates[0, -1] = 0.0
+        # If in data mode, use self.receivers if 2D, else use dummy placeholder receivers (will be updated dynamically)
+        rec_positions = self.receivers[0] if (self.from_data and self.receivers.ndim == 3) else self.receivers
         self.geometry = AcquisitionGeometry(
             model=self.model,
-            rec_positions=self.receivers,
+            rec_positions=rec_positions,
             src_positions=src_coordinates,
             t0=self.t0,
             tn=self.tn,
@@ -114,57 +172,96 @@ class ReverseTimeMigration:
         self.solver = AcousticWaveSolver(self.model, self.geometry, space_order=self.space_order, time_order=self.time_order)
 
     def run(self, save_wavefield=False, save_each=5):
-        shots = []
-        us = []
-        vs = []
-        image = Function(name="image", grid=self.model.grid)
-        operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
-        
-        for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
-
-            self.geometry.src_positions[0, :] = self.sources[i, :]
+        if self.from_data:
+            us = []
+            vs = []
+            image = Function(name="image", grid=self.model.grid)
+            operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
             
-            true_d, _, _ = self.solver.forward(vp=self.model.vp)
-            smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
+            for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
+                self.geometry.src_positions[0, :] = self.sources[i, :]
+                
+                # Update receiver coordinates for this shot dynamically
+                current_recs = self.receivers[i] if self.receivers.ndim == 3 else self.receivers
+                self.geometry.rec.coordinates.data[:, :] = current_recs
+                self.residual_source.coordinates.data[:, :] = current_recs
+                
+                _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True, dt=self.geometry.dt)
+                
+                if save_wavefield:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
+                else:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+                
+                operator(u=u0, v=v, vp=self.model0.vp, dt=self.geometry.dt, residual=self.shots[i])
+                
+                if save_wavefield:
+                    us.append(u0.data.copy()[::save_each])
+                    vs.append(v.data.copy()[::save_each])
             
-            if save_wavefield:
-                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
-            else:
-                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+            self.us = np.array(us)
+            self.vs = np.array(vs)
+            self.image = image.data
+            return self.image
+        else:
+            shots = []
+            us = []
+            vs = []
+            image = Function(name="image", grid=self.model.grid)
+            operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
             
-            residual = smooth_d.data - true_d.data
-            shots.append(residual)
-            operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=residual)
+            for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
+                self.geometry.src_positions[0, :] = self.sources[i, :]
+                
+                true_d, _, _ = self.solver.forward(vp=self.model.vp)
+                smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
+                
+                if save_wavefield:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
+                else:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+                
+                residual = smooth_d.data - true_d.data
+                shots.append(residual)
+                operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=residual)
+                
+                if save_wavefield:
+                    us.append(u0.data.copy()[::save_each])
+                    vs.append(v.data.copy()[::save_each])
             
-            if save_wavefield:
-                us.append(u0.data.copy()[::save_each])
-                vs.append(v.data.copy()[::save_each])
-        
-        self.shots = np.array(shots)
-        self.us = np.array(us)
-        self.vs = np.array(vs)
-        self.image = image.data
-        return self.image
+            self.shots = np.array(shots)
+            self.us = np.array(us)
+            self.vs = np.array(vs)
+            self.image = image.data
+            return self.image
     
     def migrate_from_data(self, shot_records, save_wavefield=False, save_each=5):
+        # Kept for backward compatibility
         us = []
         vs = []
         image = Function(name="image", grid=self.model.grid)
         operator = self._imaging_operator(self.model, image)
         nshots = shot_records.shape[0]
         
+        # Cast to float32 to avoid warnings
+        shot_records = shot_records.astype(np.float32)
+        
         for i in tqdm(range(nshots), desc="source", total=nshots):
             self.geometry.src_positions[0, :] = self.sources[i, :]
             
-            # true_d, _, _ = self.solver.forward(vp=self.model.vp)
-            _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
+            current_recs = self.receivers[i] if self.receivers.ndim == 3 else self.receivers
+            self.geometry.rec.coordinates.data[:, :] = current_recs
+            self.residual_source.coordinates.data[:, :] = current_recs
+            
+            dt = self.geometry.dt if self.from_data else self.model0.critical_dt
+            _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True, dt=dt)
             
             if save_wavefield:
                 v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
             else:
                 v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
             
-            operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=shot_records[i])
+            operator(u=u0, v=v, vp=self.model0.vp, dt=dt, residual=shot_records[i])
             
             if save_wavefield:
                 us.append(u0.data.copy()[::save_each])
@@ -188,8 +285,10 @@ class ReverseTimeMigration:
         stencil = Eq(v.backward, solve(eqn, v.backward))
         
         dt = model.grid.stepping_dim.spacing
-        residual = PointSource(name="residual", grid=model.grid, time_range=self.geometry.time_axis, coordinates=self.geometry.rec_positions)
-        res_term = residual.inject(field=v.backward, expr=residual*dt**2/model.m)
+        
+        # Store residual PointSource so coordinates can be updated dynamically
+        self.residual_source = PointSource(name="residual", grid=model.grid, time_range=self.geometry.time_axis, coordinates=self.geometry.rec_positions)
+        res_term = self.residual_source.inject(field=v.backward, expr=self.residual_source*dt**2/model.m)
         
         image_update = Eq(image, image-u*v)
     
