@@ -1,19 +1,16 @@
+from joblib import Parallel, delayed
+import skfmm
 from matplotlib import pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
 import numpy as np
 from devito import configuration, TimeFunction, Operator, Eq, solve, Function
-from examples.seismic import demo_model, AcquisitionGeometry, PointSource, plot_image, Model, plot_velocity, plot_shotrecord
+from examples.seismic import AcquisitionGeometry, PointSource, Model
 from examples.seismic.acoustic import AcousticWaveSolver
 import torch
 from deepwave import scalar_born
-from shotgen.sampleshot import load_marmousi
-from shotgen.sampleshot import GeoModel, LoadShot
-from scipy.ndimage import gaussian_filter, laplace
+from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 import scienceplots
 import matplotlib
-import sys
-import pathlib
 configuration["log-level"] = "WARNING"
 plt.style.use(['science','no-latex'])
 matplotlib.rcParams.update({"font.size":14})
@@ -21,31 +18,74 @@ matplotlib.rcParams.update({"font.size":14})
 
 class ReverseTimeMigration:
     """
-    The `ReverseTimeMigration` class build on top of `Devito`, `PyLops` and `shotgen` to create an RTM image.
+    The `ReverseTimeMigration` class builds on top of `Devito`, `PyLops` and `shotgen` to create an RTM image.
     
-    It reads a shot record from `shotgen` as a HDF5 file and pass all the necessary parameters to `Devito`'s `Model` class to generate a forward model. `Devito` then performs the backward simulation and generates the image.
-    
-    For a full example on RTM using `Devito`, see [the example](https://www.devitoproject.org/examples/seismic/tutorials/02_rtm.html) in their
+    It supports two modes:
+    1. Simulation Mode: Generates forward data and migrations internally from standard acquisition geometry.
+    2. Data Mode: Runs RTM directly using pre-recorded/simulated dataset parameters (e.g. from LoadShotRecord).
     """
     
     def __init__(
         self,
-        vp:np.ndarray,
-        n_sources:int,
-        n_receivers:int,
-        origin:tuple,
-        spacing:tuple,
-        nbl:int,
-        t0:float,
-        tn:float,
-        f0:float,
-        smooth_sigma:float,
+        vp: np.ndarray,
+        *args,
+        sources: np.ndarray = None,
+        receivers: np.ndarray = None,
+        shots: np.ndarray = None,
+        time: np.ndarray = None,
+        spacing: tuple = (1.0, 1.0),
+        nbl: int = 40,
+        smooth_sigma: float = 5.0,
+        f0: float = 25.0,
+        space_order: int = 4,
+        time_order: int = 2,
         dtype=np.float32,
-        space_order:int=4,
-        time_order:int=2,
+        **kwargs,
     ):
-        
-        self.vp = vp/1000
+        # Parse arguments to support both positional and keyword arguments for both modes
+        if sources is not None:
+            self.from_data = True
+        else:
+            self.from_data = False
+
+        if self.from_data:
+            # Keyword/data-driven signature
+            origin = kwargs.get("origin", (0.0, 0.0))
+            
+            n_sources = sources.shape[0]
+            n_receivers = receivers.shape[1] if receivers.ndim == 3 else receivers.shape[0]
+            
+            # Convert time vector (seconds) to ms
+            t0 = time[0] * 1000.0
+            tn = time[-1] * 1000.0
+        else:
+            # Simulation signature: parse n_sources, n_receivers, origin, t0, tn from positional args or kwargs.
+            # Other parameters like spacing, nbl, smooth_sigma, f0, space_order, time_order, dtype are already
+            # bound to local variables via the method signature.
+            n_sources = args[0] if len(args) > 0 else kwargs.get("n_sources")
+            n_receivers = args[1] if len(args) > 1 else kwargs.get("n_receivers")
+            origin = args[2] if len(args) > 2 else kwargs.get("origin")
+            
+            if len(args) > 3:
+                spacing = args[3]
+            if len(args) > 4:
+                nbl = args[4]
+                
+            t0 = args[5] if len(args) > 5 else kwargs.get("t0")
+            tn = args[6] if len(args) > 6 else kwargs.get("tn")
+            
+            if len(args) > 7:
+                f0 = args[7]
+            if len(args) > 8:
+                smooth_sigma = args[8]
+            if len(args) > 9:
+                dtype = args[9]
+            if len(args) > 10:
+                space_order = args[10]
+            if len(args) > 11:
+                time_order = args[11]
+
+        self.vp = vp / 1000
         self.v0 = gaussian_filter(self.vp, sigma=smooth_sigma)
         self.n_sources = n_sources
         self.n_receivers = n_receivers
@@ -56,22 +96,35 @@ class ReverseTimeMigration:
         self.time_order = time_order
         self.t0 = t0
         self.tn = tn
-        self.f0 = f0/1000
+        self.f0 = f0 / 1000  # Convert Hz/kHz to Devito kHz
         self.dtype = dtype
         
         self._create_model()
         
-        source_locations = np.empty((self.n_sources, 2), dtype=np.float32)
-        source_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_sources)
-        source_locations[:, 1] = 0.
-        self.sources = source_locations
-        
-        rec_locations = np.empty((self.n_receivers, 2))
-        rec_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_receivers)
-        rec_locations[:, 1] = 0.
-        self.receivers = rec_locations
-        
-        self._create_geometry()
+        if self.from_data:
+            self.sources = sources
+            self.receivers = receivers
+            # Transpose to (n_sources, nt, n_receivers) and convert to float32
+            self.shots = np.transpose(shots, (0, 2, 1)).astype(np.float32)
+            
+            self._create_geometry()
+            
+            # Resample geometry to the dataset's dt (in ms)
+            dt_data = (time[1] - time[0]) * 1000.0
+            self.geometry.resample(dt_data)
+        else:
+            source_locations = np.empty((self.n_sources, 2), dtype=np.float32)
+            source_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_sources)
+            source_locations[:, 1] = 0.
+            self.sources = source_locations
+            
+            rec_locations = np.empty((self.n_receivers, 2))
+            rec_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_receivers)
+            rec_locations[:, 1] = 0.
+            self.receivers = rec_locations
+            
+            self._create_geometry()
+            
         self._setup_solver()
         
     def _create_model(self):
@@ -103,9 +156,11 @@ class ReverseTimeMigration:
         src_coordinates = np.empty((1, 2))
         src_coordinates[0, :] = np.array(self.model.domain_size) * 0.5
         src_coordinates[0, -1] = 0.0
+        # If in data mode, use self.receivers if 2D, else use dummy placeholder receivers (will be updated dynamically)
+        rec_positions = self.receivers[0] if (self.from_data and self.receivers.ndim == 3) else self.receivers
         self.geometry = AcquisitionGeometry(
             model=self.model,
-            rec_positions=self.receivers,
+            rec_positions=rec_positions,
             src_positions=src_coordinates,
             t0=self.t0,
             tn=self.tn,
@@ -117,57 +172,96 @@ class ReverseTimeMigration:
         self.solver = AcousticWaveSolver(self.model, self.geometry, space_order=self.space_order, time_order=self.time_order)
 
     def run(self, save_wavefield=False, save_each=5):
-        shots = []
-        us = []
-        vs = []
-        image = Function(name="image", grid=self.model.grid)
-        operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
-        
-        for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
-
-            self.geometry.src_positions[0, :] = self.sources[i, :]
+        if self.from_data:
+            us = []
+            vs = []
+            image = Function(name="image", grid=self.model.grid)
+            operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
             
-            true_d, _, _ = self.solver.forward(vp=self.model.vp)
-            smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
+            for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
+                self.geometry.src_positions[0, :] = self.sources[i, :]
+                
+                # Update receiver coordinates for this shot dynamically
+                current_recs = self.receivers[i] if self.receivers.ndim == 3 else self.receivers
+                self.geometry.rec.coordinates.data[:, :] = current_recs
+                self.residual_source.coordinates.data[:, :] = current_recs
+                
+                _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True, dt=self.geometry.dt)
+                
+                if save_wavefield:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
+                else:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+                
+                operator(u=u0, v=v, vp=self.model0.vp, dt=self.geometry.dt, residual=self.shots[i])
+                
+                if save_wavefield:
+                    us.append(u0.data.copy()[::save_each])
+                    vs.append(v.data.copy()[::save_each])
             
-            if save_wavefield:
-                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
-            else:
-                v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+            self.us = np.array(us)
+            self.vs = np.array(vs)
+            self.image = image.data
+            return self.image
+        else:
+            shots = []
+            us = []
+            vs = []
+            image = Function(name="image", grid=self.model.grid)
+            operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
             
-            residual = smooth_d.data - true_d.data
-            shots.append(residual)
-            operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=residual)
+            for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
+                self.geometry.src_positions[0, :] = self.sources[i, :]
+                
+                true_d, _, _ = self.solver.forward(vp=self.model.vp)
+                smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
+                
+                if save_wavefield:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
+                else:
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+                
+                residual = smooth_d.data - true_d.data
+                shots.append(residual)
+                operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=residual)
+                
+                if save_wavefield:
+                    us.append(u0.data.copy()[::save_each])
+                    vs.append(v.data.copy()[::save_each])
             
-            if save_wavefield:
-                us.append(u0.data.copy()[::save_each])
-                vs.append(v.data.copy()[::save_each])
-        
-        self.shots = np.array(shots)
-        self.us = np.array(us)
-        self.vs = np.array(vs)
-        self.image = image.data
-        return self.image
+            self.shots = np.array(shots)
+            self.us = np.array(us)
+            self.vs = np.array(vs)
+            self.image = image.data
+            return self.image
     
     def migrate_from_data(self, shot_records, save_wavefield=False, save_each=5):
+        # Kept for backward compatibility
         us = []
         vs = []
         image = Function(name="image", grid=self.model.grid)
         operator = self._imaging_operator(self.model, image)
         nshots = shot_records.shape[0]
         
+        # Cast to float32 to avoid warnings
+        shot_records = shot_records.astype(np.float32)
+        
         for i in tqdm(range(nshots), desc="source", total=nshots):
             self.geometry.src_positions[0, :] = self.sources[i, :]
             
-            # true_d, _, _ = self.solver.forward(vp=self.model.vp)
-            _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
+            current_recs = self.receivers[i] if self.receivers.ndim == 3 else self.receivers
+            self.geometry.rec.coordinates.data[:, :] = current_recs
+            self.residual_source.coordinates.data[:, :] = current_recs
+            
+            dt = self.geometry.dt if self.from_data else self.model0.critical_dt
+            _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True, dt=dt)
             
             if save_wavefield:
                 v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
             else:
                 v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
             
-            operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=shot_records[i])
+            operator(u=u0, v=v, vp=self.model0.vp, dt=dt, residual=shot_records[i])
             
             if save_wavefield:
                 us.append(u0.data.copy()[::save_each])
@@ -191,8 +285,10 @@ class ReverseTimeMigration:
         stencil = Eq(v.backward, solve(eqn, v.backward))
         
         dt = model.grid.stepping_dim.spacing
-        residual = PointSource(name="residual", grid=model.grid, time_range=self.geometry.time_axis, coordinates=self.geometry.rec_positions)
-        res_term = residual.inject(field=v.backward, expr=residual*dt**2/model.m)
+        
+        # Store residual PointSource so coordinates can be updated dynamically
+        self.residual_source = PointSource(name="residual", grid=model.grid, time_range=self.geometry.time_axis, coordinates=self.geometry.rec_positions)
+        res_term = self.residual_source.inject(field=v.backward, expr=self.residual_source*dt**2/model.m)
         
         image_update = Eq(image, image-u*v)
     
@@ -277,3 +373,174 @@ class ReverseTimeMigrationGPU:
             optimizer.step(closure)
         
         return scatter.detach().numpy()
+
+
+class KirchhoffMigration:
+    """
+    Kirchhoff pre-stack depth migration (PSDM) for 2D seismic data.
+
+    This class computes a depth-migrated seismic image using Kirchhoff migration
+    with traveltimes computed via the Fast Marching Method (FMM).
+
+    The data parameters passed to the `__init__` method (such as velocity, sources, 
+    receivers, shots, and time) typically originate from a `ShotRecord` object 
+    generated by the `shotgen` module (or loaded via `LoadShotRecord`).
+
+    Parameters
+    ----------
+    vp : np.ndarray
+        The P-wave velocity model of shape (nx, nz), where nx is the number of grid 
+        points in the horizontal direction and nz is the number of grid points in 
+        the vertical direction.
+    sources : np.ndarray
+        The grid coordinates of the sources. Shape should be (n_sources, 2) 
+        containing coordinate indices (ix, iz).
+    receivers : np.ndarray
+        The grid coordinates of the receivers. Can be a 2D array of shape 
+        (n_receivers, 2) if receivers are fixed, or a 3D array of shape 
+        (n_sources, n_receivers, 2) if receivers vary per shot, containing 
+        coordinate indices (ix, iz).
+    shots : np.ndarray
+        The seismic shot record (common-source gathers). Shape should be 
+        (n_sources, n_receivers, nt), where nt is the number of time samples.
+    time : np.ndarray
+        The time axis array of shape (nt,).
+    spacing : tuple of float
+        The grid spacing (dx, dz) in physical units (e.g. meters).
+
+    Attributes
+    ----------
+    vp : np.ndarray
+        The P-wave velocity model.
+    sources : np.ndarray
+        The source grid coordinates.
+    receivers : np.ndarray
+        The receiver grid coordinates.
+    shots : np.ndarray
+        The seismic shot records.
+    time : np.ndarray
+        The time axis array.
+    spacing : tuple of float
+        The spatial grid spacing (dx, dz).
+    unique_coords : list of tuple
+        A list of unique coordinates (sources and receivers combined) for which 
+        traveltime fields are computed.
+    traveltime_dict : dict
+        A dictionary mapping each coordinate in `unique_coords` to its FMM traveltime 
+        field computed over the velocity grid.
+    output : np.ndarray
+        The migrated image of shape (nx, nz).
+
+    Methods
+    -------
+    run()
+        Run the Kirchhoff migration and return the migrated image.
+    """
+    
+    def __init__(
+        self,
+        vp:np.ndarray,
+        sources:np.ndarray,
+        receivers:np.ndarray,
+        shots:np.ndarray,
+        time:np.ndarray,
+        spacing:tuple,
+    ):
+
+        self.vp = vp
+        self.sources = sources
+        self.receivers = receivers
+        self.shots = shots
+        self.time = time
+        self.spacing = spacing
+
+        self._gather_unique_coords()
+        self._setup_solver()
+
+    def _gather_unique_coords(self):
+        all_coords = [tuple(s) for s in self.sources]
+
+        if self.receivers.ndim == 3:
+            for i in range(self.receivers.shape[0]):
+                for j in range(self.receivers.shape[1]):
+                    all_coords.append(tuple(self.receivers[i, j]))
+        else:
+            for r in self.receivers:
+                all_coords.append(tuple(r))
+
+        self.unique_coords = list(set(all_coords))
+        
+    def _setup_solver(self):
+        computed_fields = Parallel(n_jobs=-1)(
+            delayed(self.compute_single_traveltime_field)(c, self.vp, self.spacing[0], self.spacing[1])
+            for c in self.unique_coords
+        )
+
+        # 3. Create a dictionary to instantly look up traveltime fields
+        self.traveltime_dict = {coord: field for coord, field in zip(self.unique_coords, computed_fields)}
+        self.output = np.zeros_like(self.vp)
+
+    def compute_single_traveltime_field(self, coord, vp, dx, dz):
+        """Computes the traveltime field for a single unique coordinate."""
+        phi = np.ones_like(vp)
+        idx_x, idx_z = int(coord[0]), int(coord[1])
+        phi[idx_x, idx_z] = 0
+        return skfmm.travel_time(phi, vp, dx=[dx, dz])
+        
+    def run(self):
+        # Build spatial coordinate grids for calculating analytical distances
+
+        nx, nz = self.vp.shape
+        x_coords = np.arange(nx) * self.spacing[0]
+        z_coords = np.arange(nz) * self.spacing[1]
+        X, Z = np.meshgrid(x_coords, z_coords, indexing='ij')
+        eps = 1e-4 # Small epsilon to prevent division by zero at source/receiver points
+        
+        for si, source in enumerate(self.sources):
+            
+            # Source physical coordinates
+            sx, sz = source[0] * self.spacing[0], source[1] * self.spacing[1]
+            
+            # Distance from source to all grid points
+            Rs = np.sqrt((X - sx)**2 + (Z - sz)**2) + eps
+            
+            # Retrieve pre-computed source traveltime field
+            traveltime_s = self.traveltime_dict[tuple(source)]
+            
+            n_receivers = self.receivers.shape[1] if self.receivers.ndim == 3 else self.receivers.shape[0]
+            
+            for ri in range(n_receivers):
+                # Extract receiver coordinates safely whether 2D or 3D array
+                rec_coord = self.receivers[si, ri] if self.receivers.ndim == 3 else self.receivers[ri]
+                    
+                # Total traveltime is just the sum of the two pre-computed fields
+                traveltime_r = self.traveltime_dict[tuple(rec_coord)]
+                total_traveltime = traveltime_s + traveltime_r
+                
+                trace = self.shots[si, ri]
+                
+                # Receiver physical coordinates
+                rx = rec_coord[0] * self.spacing[0]
+                rz = rec_coord[1] * self.spacing[1]
+                
+                # Distance from receiver to all grid points
+                Rr = np.sqrt((X - rx)**2 + (Z - rz)**2) + eps
+                
+                # --- 1. Geometric Dispersion (Spreading) ---
+                spreading = 1.0 / np.sqrt(Rs * Rr)
+                
+                # --- 2. Obliquity Factor ---
+                obliquity = np.abs(Z - rz) / Rr
+                
+                # Combined amplitude weight
+                weight = spreading * obliquity
+                
+                # Interpolate amplitudes (forces out-of-bounds to 0.0)
+                amplitudes = np.interp(total_traveltime.ravel(), self.time, trace, left=0.0, right=0.0).reshape(total_traveltime.shape)
+                
+                # Apply the weighting factors and add to output
+                self.output += amplitudes * weight
+
+        return self.output
+
+

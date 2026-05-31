@@ -20,7 +20,7 @@ build-backend = "setuptools.build_meta"
 name = "shotgen"
 
 # Versions should comply with PEP 440:
-version = "1.0.0"
+version = "1.0.1"
 
 # This is a one-line description or tagline of what your project does.
 description = "A seismic sample shot generator"
