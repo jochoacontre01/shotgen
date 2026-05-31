@@ -1,19 +1,14 @@
 from matplotlib import pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
 import numpy as np
 from devito import configuration, TimeFunction, Operator, Eq, solve, Function
-from examples.seismic import demo_model, AcquisitionGeometry, PointSource, plot_image, Model, plot_velocity, plot_shotrecord
+from examples.seismic import AcquisitionGeometry, PointSource, Model
 from examples.seismic.acoustic import AcousticWaveSolver
 import torch
 from deepwave import scalar_born
-from shotgen.sampleshot import load_marmousi
-from shotgen.sampleshot import GeoModel, LoadShotRecord
-from scipy.ndimage import gaussian_filter, laplace
+from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 import scienceplots
 import matplotlib
-import sys
-import pathlib
 configuration["log-level"] = "WARNING"
 plt.style.use(['science','no-latex'])
 matplotlib.rcParams.update({"font.size":14})
