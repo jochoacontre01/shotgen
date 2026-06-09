@@ -65,7 +65,9 @@ dependencies = [
     "segyio",
     "joblib",
     "deepwave",
-    "scikit-fmm"
+    "scikit-fmm",
+    "seisplot",
+    "tqdm",
 ]
 
 # This is configuration specific to the `setuptools` build backend.
