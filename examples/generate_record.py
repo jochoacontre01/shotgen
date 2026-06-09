@@ -1,9 +1,11 @@
-from shotgen.sampleshot import ShotRecord, GeoModel, load_marmousi, load_sigsbee
+from shotgen.sampleshot import ShotRecord, load_marmousi, load_sigsbee
+from shotgen.models import GeoModel
 from time import perf_counter
 
-vp, _ = load_sigsbee()
-    
-vp = vp[1000:2500:2, 250:800:2] #vp[:7000:5, :2000:5]
+# vp, _ = load_sigsbee()
+
+vp = GeoModel(150, 50).layered()
+#vp = vp[1000:2500:2, 250:800:2] #vp[:7000:5, :2000:5]
 
 
 nx = vp.shape[0]
