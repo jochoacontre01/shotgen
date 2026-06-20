@@ -5,7 +5,7 @@ from shotgen.sampleshot import LoadShotRecord
 from pathlib import Path
 
 
-shotpath = Path(__file__).resolve().parents[1] / "data/shot1_forCMP.h5"
+shotpath = Path(__file__).resolve().parents[1] / "data/shot1_forCMP_dataset"
 
 record = LoadShotRecord(shotpath)
 

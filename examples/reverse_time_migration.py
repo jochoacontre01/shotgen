@@ -70,24 +70,9 @@ plt.show()
 
 # ? With deepwave propagation
 
-# pathfile = Path(__file__).resolve().parents[1] / "data/shot1.h5"
-# shotobject = LoadShotRecord(pathfile)
-# data = shotobject.shots
-# init_velocity_model = shotobject.smooth_velocity
-# src_loc = shotobject.sources
-# rec_loc = shotobject.receivers
-# wavelet = shotobject.wavelet
-# f0 = shotobject.f0
-# time = shotobject.time
-
+# pathfile = Path(__file__).resolve().parents[1] / "data/shot1_dataset"
 # rtm = ReverseTimeMigrationGPU(
-#     shot_record=data,
-#     velocity_model=init_velocity_model,
-#     sources=src_loc,
-#     receivers=rec_loc,
-#     wavelet=wavelet,
-#     f0=f0,
-#     time=time
+#     dataset_dir=pathfile
 # )
 
 # migrated = rtm.run(save)

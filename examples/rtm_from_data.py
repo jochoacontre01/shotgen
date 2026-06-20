@@ -7,23 +7,14 @@ from shotgen.migration import ReverseTimeMigration
 
 def main():
     # 1. Locate and load the Sigsbee shot record file
-    shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_100hz_10goffset_45soffset_sigsbee.h5"
+    shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_100hz_10goffset_45soffset_sigsbee_dataset"
     print(f"Loading shot record from: {shotpath}")
-    data = LoadShotRecord(shotpath)
     
-    # 2. Extract acquisition parameters
-    shots = data.shots
-    velocity = data.velocity_model
-    sources = data.sources
-    receivers = data.receivers
-    time = data.time
-    f0 = data.f0
-
-    print(f"Loaded shots shape: {shots.shape}")
-    print(f"Loaded velocity model shape: {velocity.shape}")
-    print(f"Loaded sources shape: {sources.shape}")
-    print(f"Loaded receivers shape: {receivers.shape}")
-    print(f"Time vector length: {len(time)}")
+    # 2. Spatial spacing (dx = 1.0, dz = 1.0) and absorbing boundary size
+    dx_spacing = 1.0
+    dz_spacing = 1.0
+    spacing = (dx_spacing, dz_spacing)
+    nbl = 40
 
     # 3. Spatial spacing (dx = 1.0, dz = 1.0) and absorbing boundary size
     dx_spacing = 1.0
@@ -31,16 +22,11 @@ def main():
     spacing = (dx_spacing, dz_spacing)
     nbl = 40
     
-    # 4. Initialize native ReverseTimeMigration directly using the acquisition parameters
+    # 3. Initialize native ReverseTimeMigration directly using the SEGY dataset directory
     rtm = ReverseTimeMigration(
-        vp=velocity,
-        sources=sources,
-        receivers=receivers,
-        shots=shots,
-        time=time,
+        dataset_dir=shotpath,
         spacing=spacing,
         nbl=nbl,
-        f0=f0,
         smooth_sigma=5.0,
         space_order=4,
     )

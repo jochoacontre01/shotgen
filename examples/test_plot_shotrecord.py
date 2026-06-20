@@ -156,11 +156,11 @@ def filter_2d(data, x, y):
 # sim.show_model()
 
 # sim.run(ms=0.15E3)
-# sim.save_shot("shot1.h5", overwrite=True)
+# sim.save_shot("shot1_dataset", overwrite=True)
 
 
 # ? Load shot record
-shot = LoadShotRecord(pathlib.Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_250hz_10goffset_45soffset_sigsbee.h5")
+shot = LoadShotRecord(pathlib.Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_250hz_10goffset_45soffset_sigsbee_dataset")
 
 shots = shot.shots
 nshots = shot.nshots
@@ -187,7 +187,7 @@ shot.plot(plottype="wiggle", skip=1, normalize="trace", colormap="grey")
     
 #     shots_filtered[i] = shot_filtered
 
-# with h5py.File(os.path.join(os.path.dirname(os.path.dirname(__file__)),"data/shot1_f.h5"), mode="w") as f:
+# with h5py.File(os.path.join(os.path.dirname(os.path.dirname(__file__)),"data/shot1_f_dataset"), mode="w") as f:
 #     f.create_dataset("shots", data=shots_filtered)
 #     f.create_dataset("receivers", data=receivers, shape=receivers.shape)
 #     f.create_dataset("sources", data=sources, shape=sources.shape)

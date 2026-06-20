@@ -157,3 +157,60 @@ class SegyIO:
             "dt": dt,
             "time": time_vector
         }
+
+    @staticmethod
+    def write_model(filepath, model, dx, dz):
+        """
+        Write a 2D velocity model array to a SEGY file.
+        
+        Parameters
+        ----------
+        filepath : str
+            The path where the SEGY file will be saved.
+        model : ndarray
+            The 2D model array (nx, nz).
+        dx : float
+            Horizontal spacing.
+        dz : float
+            Vertical spacing.
+        """
+        nx, nz = model.shape
+        spec = segyio.spec()
+        spec.sorting = 1
+        spec.format = 5 # IEEE floating point
+        spec.samples = np.arange(nz) * dz # Pseudo-time axis
+        spec.tracecount = nx
+        
+        with segyio.create(filepath, spec) as f:
+            f.bin[segyio.BinField.Interval] = int(dz * 1000)
+            f.bin[segyio.BinField.Samples] = nz
+            
+            for i in range(nx):
+                f.trace[i] = model[i, :].astype(np.float32)
+                f.header[i] = {
+                    segyio.TraceField.TRACE_SEQUENCE_LINE: i + 1,
+                    segyio.TraceField.TRACE_SEQUENCE_FILE: i + 1,
+                    segyio.TraceField.CDP: i + 1,
+                    segyio.TraceField.CDP_X: int(np.round(i * dx * 1000)),
+                    segyio.TraceField.SourceGroupScalar: -1000,
+                }
+
+    @staticmethod
+    def read_model(filepath):
+        """
+        Read a 2D velocity model array from a SEGY file.
+        
+        Parameters
+        ----------
+        filepath : str
+            The path to the SEGY file.
+            
+        Returns
+        -------
+        ndarray
+            The 2D model array.
+        """
+        with segyio.open(filepath, "r", strict=False) as f:
+            data = segyio.tools.collect(f.trace)
+        return data
+

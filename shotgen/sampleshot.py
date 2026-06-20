@@ -447,35 +447,46 @@ class ShotRecord:
             
     def save_shot(self, name, overwrite=True):
         """
-        Save the simulation results and metadata to an HDF5 file.
-
-        The file is saved in a 'data/' folder relative to the project root.
+        Save the simulation results and metadata to a specified folder.
+        
+        The files saved in the folder are:
+        - traces.segy (Seismic traces and geometry)
+        - velocity_model.segy (Velocity model matrix)
+        - smooth_velocity.segy (Smooth background velocity model)
+        - metadata.h5 (Other scalar values and wavelets)
 
         Parameters
         ----------
         name : str
-            Filename for the HDF5 file. 
+            Directory path to save the files into.
         overwrite : bool, optional
-            Whether to overwrite the file if it already exists. Default is True.
+            Whether to overwrite the files if the directory already exists. Default is True.
         """
-        # name = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), f"data/{name}")
+        import os
+        import h5py
+        from shotgen.io import SegyIO
         
         if os.path.exists(name) and not overwrite:
-            print(f"Existing file with overwrite set to {overwrite} could not be created")
+            print(f"Existing folder with overwrite set to {overwrite} could not be created")
             return
-        else:
-            with h5py.File(name, mode="w") as f:
-                f.create_dataset("shots", data=self.shot_run)
-                # for nshot, shot in enumerate(self.shot_run):
-                #     f.create_dataset(f"shot_{nshot}", data=shot.reshape(shape), shape=shape)
-                f.create_dataset("receivers", data=self.recs, shape=self.recs.shape)
-                f.create_dataset("sources", data=self.sources, shape=self.sources.shape)
-                f.create_dataset("velocity_model", data=self.vel, shape=self.vel.shape)
-                f.create_dataset("smooth_velocity", data=self.v0, shape=self.v0.shape)
+            
+        os.makedirs(name, exist_ok=True)
+        
+        SegyIO.write(os.path.join(name, "traces.segy"), self)
+        if self.vel is not None:
+            SegyIO.write_model(os.path.join(name, "velocity_model.segy"), self.vel, self.dx, self.dz)
+        if hasattr(self, 'v0') and self.v0 is not None:
+            SegyIO.write_model(os.path.join(name, "smooth_velocity.segy"), self.v0, self.dx, self.dz)
+            
+        with h5py.File(os.path.join(name, "metadata.h5"), mode="w") as f:
+            if hasattr(self, 'time_vector') and self.time_vector is not None:
                 f.create_dataset("time", data=self.time_vector, shape=self.time_vector.shape)
+            if hasattr(self, 'src') and self.src is not None:
                 f.create_dataset("wavelet", data=self.src)
+            if hasattr(self, 'f0'):
                 f.create_dataset("f0", data=self.f0)
-                print(f"Saved file {name}")
+                
+        print(f"Saved simulation files to folder {name}")
     
     def show_shot(self, cmap="seismic"):
         """
@@ -559,25 +570,63 @@ class LoadShotRecord:
         
     def _load_shot(self, path):
         """
-        Read datasets from the HDF5 file and populate class attributes.
+        Read datasets from the specified folder and populate class attributes.
 
         Parameters
         ----------
         path : str
-            The filesystem path to the HDF5 file.
+            The filesystem path to the simulation folder.
         """
-        with h5py.File(path, "r") as f:
-            print("Keys: %s" % list(f.keys()))
-
-            self.receivers = f["receivers"][()]
-            self.sources = f["sources"][()]
-            self.velocity_model = f["velocity_model"][()]
-            self.smooth_velocity = f["smooth_velocity"][()]
-            self.time = f["time"][()]
-            self.shots = f["shots"][()]
-            self.wavelet = f["wavelet"][()]
-            self.f0 = f["f0"][()]
-            self.nshots = self.shots.shape[0]
+        import os
+        import h5py
+        from shotgen.io import SegyIO
+        
+        if not os.path.isdir(path):
+            raise ValueError(f"Path {path} is not a valid directory.")
+            
+        traces_path = os.path.join(path, "traces.segy")
+        vel_path = os.path.join(path, "velocity_model.segy")
+        v0_path = os.path.join(path, "smooth_velocity.segy")
+        meta_path = os.path.join(path, "metadata.h5")
+        
+        # Load traces and geometry
+        if os.path.exists(traces_path):
+            segy_data = SegyIO.read(traces_path)
+            self.receivers = segy_data["receivers"]
+            self.sources = segy_data["sources"]
+            
+            # Reshape shots data
+            flat_data = segy_data["data"]
+            n_traces, n_time = flat_data.shape
+            
+            # Reconstruct (n_sources, n_receivers, n_time)
+            # Find unique sources by rounding to ignore minor floating point diffs
+            unique_sources = np.unique(np.round(self.sources, 3), axis=0)
+            n_sources = unique_sources.shape[0]
+            n_receivers = n_traces // n_sources
+            
+            if n_sources * n_receivers == n_traces:
+                self.shots = flat_data.reshape((n_sources, n_receivers, n_time))
+            else:
+                self.shots = flat_data # Fallback to flat if it's irregular
+                
+            self.nshots = n_sources
+        
+        # Load models
+        if os.path.exists(vel_path):
+            self.velocity_model = SegyIO.read_model(vel_path)
+        if os.path.exists(v0_path):
+            self.smooth_velocity = SegyIO.read_model(v0_path)
+            
+        # Load metadata
+        if os.path.exists(meta_path):
+            with h5py.File(meta_path, "r") as f:
+                if "time" in f:
+                    self.time = f["time"][()]
+                if "wavelet" in f:
+                    self.wavelet = f["wavelet"][()]
+                if "f0" in f:
+                    self.f0 = f["f0"][()]
 
     def plot(self, **kwargs):
         """

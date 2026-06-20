@@ -4,7 +4,7 @@ from time import perf_counter
 
 # vp, _ = load_sigsbee()
 
-vp = GeoModel(150, 50).layered()
+vp = GeoModel(750, 50).foothills()
 #vp = vp[1000:2500:2, 250:800:2] #vp[:7000:5, :2000:5]
 
 
@@ -56,4 +56,4 @@ end = perf_counter()
 print(f"Simulation ended after {end-start};.6f seconds")
 shot.show_shot(cmap="grey")
 
-shot.save_shot(f"{shot.gather.replace(" ","")}-shot_{nx}nx_{nz}nz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_sigsbee.h5")
+shot.save_shot(f"data/{shot.gather.replace(" ","")}-shot_{nx}nx_{nz}nz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_sigsbee_dataset")
