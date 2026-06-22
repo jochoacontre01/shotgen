@@ -24,15 +24,15 @@ def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None):
     
     traces_path = os.path.join(dataset_dir, "traces.segy")
     v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
-    vel_path = os.path.join(dataset_dir, "velocity_model.segy")
+    # vel_path = os.path.join(dataset_dir, "velocity_model.segy")
     meta_path = os.path.join(dataset_dir, "metadata.h5")
     
     if os.path.exists(v0_path):
         vp = SegyIO.read_model(v0_path)
-    elif os.path.exists(vel_path):
-        vp = SegyIO.read_model(vel_path)
+    # elif os.path.exists(vel_path):
+    #     vp = SegyIO.read_model(vel_path)
     else:
-        raise FileNotFoundError(f"Neither smooth_velocity.segy nor velocity_model.segy found in {dataset_dir}")
+        raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
         
     segy_data = SegyIO.read(traces_path)
     receivers = segy_data["receivers"]
@@ -70,9 +70,76 @@ class ReverseTimeMigration:
     """
     The `ReverseTimeMigration` class builds on top of `Devito`, `PyLops` and `shotgen` to create an RTM image.
     
-    It supports two modes:
-    1. Simulation Mode: Generates forward data and migrations internally from standard acquisition geometry.
-    2. Data Mode: Runs RTM directly using pre-recorded/simulated dataset parameters (e.g. from LoadShotRecord).
+    This class supports solving the acoustic wave equation in reverse to image the subsurface from surface 
+    seismic measurements. It uses Devito for optimized finite-difference wavefield propagation.
+    
+    It supports three primary modes of operation:
+    1. **Dataset Mode**: The easiest way to migrate pre-existing data. Provide a `dataset_dir` containing the SEGY files (`traces.segy`, `smooth_velocity.segy`) and the metadata HDF5 file (`metadata.h5`).
+    2. **Array Data Mode**: Provide the `vp`, `sources`, `receivers`, `shots`, and `time` arrays explicitly.
+    3. **Simulation Mode**: Instead of passing pre-recorded data, provide the number of sources/receivers along with `vp` and boundary parameters. The class will internally forward-model the data before migrating it.
+
+    Parameters
+    ----------
+    vp : np.ndarray, optional
+        The P-wave velocity model of shape (nx, nz). Required unless `dataset_dir` is provided.
+    *args : 
+        Positional arguments for simulation mode. Includes (in order): n_sources, n_receivers, origin, spacing,
+        nbl, t0, tn, f0, smooth_sigma, dtype, space_order, time_order.
+    dataset_dir : str, optional
+        Path to a shotgen-generated dataset directory containing SEGY files. If provided, `vp`, `sources`, 
+        `receivers`, `shots`, `time`, and `f0` are loaded automatically.
+    sources : np.ndarray, optional
+        Coordinates of the sources. Shape (n_sources, 2). Required for Array Data mode.
+    receivers : np.ndarray, optional
+        Coordinates of the receivers. Shape (n_sources, n_receivers, 2) or (n_receivers, 2). Required for Array Data mode.
+    shots : np.ndarray, optional
+        Recorded shot data. Shape (n_sources, n_receivers, n_time). Required for Array Data mode.
+    time : np.ndarray, optional
+        Time vector of the recording. Required for Array Data mode.
+    spacing : tuple of float, optional
+        Grid spacing (dx, dz) in physical units (e.g. meters). Default is (1.0, 1.0).
+    nbl : int, optional
+        Number of absorbing boundary layers for the wavefield solver. Default is 40.
+    smooth_sigma : float, optional
+        Sigma for the Gaussian filter used to create the smooth background velocity model. Default is 5.0.
+    f0 : float, optional
+        Peak frequency of the source wavelet in Hz. Required. Can be loaded from `dataset_dir`. Default is 25.0 in simulation mode.
+    space_order : int, optional
+        Spatial discretization order for finite differences. Default is 4.
+    time_order : int, optional
+        Temporal discretization order for finite differences. Default is 2.
+    dtype : type, optional
+        Data type for the arrays. Default is np.float32.
+    **kwargs : dict
+        Additional keyword arguments to override simulation mode parameters (e.g. `n_sources`, `n_receivers`, `origin`, `t0`, `tn`).
+        
+    Examples
+    --------
+    **Example 1: Using a SEGY Dataset Directory**
+    ```python
+    from shotgen.migration import ReverseTimeMigration
+    
+    rtm = ReverseTimeMigration(
+        dataset_dir="path/to/my_shot_dataset",
+        spacing=(10.0, 10.0),
+        nbl=40
+    )
+    image = rtm.run(save_wavefield=False)
+    ```
+    
+    **Example 2: Array Data Mode**
+    ```python
+    rtm = ReverseTimeMigration(
+        vp=velocity_model,
+        sources=source_coords,
+        receivers=receiver_coords,
+        shots=shot_data,
+        time=time_vector,
+        f0=25.0,
+        spacing=(10.0, 10.0)
+    )
+    image = rtm.run()
+    ```
     """
     
     def __init__(
@@ -141,8 +208,13 @@ class ReverseTimeMigration:
             if len(args) > 11:
                 time_order = args[11]
 
-        self.vp = vp / 1000
-        self.v0 = gaussian_filter(self.vp, sigma=smooth_sigma)
+        if dataset_dir is not None:
+            self.v0 = vp # Already smoothed
+            self.vp = self.v0.copy()
+        else:
+            self.vp = vp / 1000
+            self.v0 = gaussian_filter(self.vp, sigma=smooth_sigma)
+
         self.n_sources = n_sources
         self.n_receivers = n_receivers
         self.origin = origin
@@ -474,6 +546,8 @@ class KirchhoffMigration:
         The time axis array of shape (nt,).
     spacing : tuple of float
         The grid spacing (dx, dz) in physical units (e.g. meters).
+    dataset_dir : str
+        The path to the dataset directory. This directory must contain the files smooth_velocity.segy, velocity_model.segy, traces.segy and metadata.h5.
 
     Attributes
     ----------
