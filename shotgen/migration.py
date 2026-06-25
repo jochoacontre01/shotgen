@@ -209,7 +209,7 @@ class ReverseTimeMigration:
                 time_order = args[11]
 
         if dataset_dir is not None:
-            self.v0 = vp # Already smoothed
+            self.v0 = vp / 1000.0 # Already smoothed, but needs to be in km/s for Devito
             self.vp = self.v0.copy()
         else:
             self.vp = vp / 1000
