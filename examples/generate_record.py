@@ -2,10 +2,10 @@ from shotgen.sampleshot import ShotRecord, load_marmousi, load_sigsbee
 from shotgen.models import GeoModel
 from time import perf_counter
 
-# vp, _ = load_sigsbee()
+vp = load_marmousi()
 
-vp = GeoModel(750, 50).foothills()
-#vp = vp[1000:2500:2, 250:800:2] #vp[:7000:5, :2000:5]
+# vp = GeoModel(750, 50).foothills()
+vp = vp[1000:2500:2, 250:800:2] #vp[:7000:5, :2000:5]
 
 
 nx = vp.shape[0]
@@ -18,9 +18,9 @@ shot = ShotRecord(
     nz=nz,
     dx=1,
     dz=1,
-    n_sources=6,
+    n_sources=10,
     n_receivers=32,
-    f0=250,
+    f0=100,
     # src_origin=(0,10),
     # rec_origin=(0,2),
     src_origin=(0.0,2.0),
