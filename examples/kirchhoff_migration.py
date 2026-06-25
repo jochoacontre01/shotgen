@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import laplace
 import numpy as np
 
-shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_100hz_10goffset_45soffset_sigsbee_dataset"
+shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_50nz_32rec_6src_250hz_10goffset_45soffset_sigsbee_dataset"
 
 dx_spacing = 1.0 
 dz_spacing = 1.0 
