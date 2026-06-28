@@ -14,6 +14,8 @@ import segyio
 from tqdm import tqdm
 from joblib import Parallel, delayed
 import warnings
+import subprocess
+import time
 
 configuration["log-level"] = "WARNING"
 
@@ -201,7 +203,7 @@ class ShotRecord:
         self.vel = model
         self._model_ready = True
         
-    def show_model(self, draw_recs=True, **kwargs):
+    def show_model(self, draw_recs=True, cli=False, **kwargs):
         """
         Plot the current velocity model with source and receiver positions.
 
@@ -233,7 +235,13 @@ class ShotRecord:
             plt.title("Velocity")
             plt.xlim(self.origin[0], self.nx)
             plt.tight_layout()
-            plt.show()
+            if cli:
+                plt.savefig("img.png", dpi=100)
+                subprocess.run("timg img.png".split())
+                time.sleep(0.5)
+                subprocess.run("rm img.png".split())
+            else:
+                plt.show()
         
     def set_source_position(self, x_pos, y_pos):
         src_pos = np.vstack([x_pos, y_pos])
