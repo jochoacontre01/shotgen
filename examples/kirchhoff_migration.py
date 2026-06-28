@@ -4,6 +4,13 @@ from shotgen.migration import KirchhoffMigration
 import matplotlib.pyplot as plt
 from scipy.ndimage import laplace
 import numpy as np
+import argparse
+import subprocess
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-cli", action="store_true", help="setup runtime for non-gui interface")
+args = parser.parse_args()
 
 shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_50nz_32rec_6src_250hz_10goffset_45soffset_sigsbee_dataset"
 
@@ -24,4 +31,10 @@ plt.colorbar(label="Amplitude")
 plt.xlabel("Distance (m)")
 plt.ylabel("Depth (m)")
 plt.title("Kirchhoff Migration Image")
-plt.show()
+if args.cli:
+    plt.savefig("img.png")
+    subprocess.run("timg img.png".split())
+    time.sleep(0.5)
+    subprocess.run("rm img.png".split())
+else:    
+    plt.show()
