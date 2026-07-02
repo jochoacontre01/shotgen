@@ -13,20 +13,17 @@ def main(cli=False):
     shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_15src_100hz_15goffset_45soffset_sigsbee_dataset"
     print(f"Loading shot record from: {shotpath}")
     
-    # 2. Spatial spacing (dx = 1.0, dz = 1.0) and absorbing boundary size
-    dx_spacing = 1.0
-    dz_spacing = 1.0
-    spacing = (dx_spacing, dz_spacing)
     nbl = 40
-    
+
     # 3. Initialize native ReverseTimeMigration directly using the SEGY dataset directory
     rtm = ReverseTimeMigration(
         dataset_dir=shotpath,
-        spacing=spacing,
         nbl=nbl,
         smooth_sigma=5.0,
         space_order=4,
     )
+    
+    dx_spacing, dz_spacing = rtm.spacing
 
     # 5. Execute run method
     print("Running Reverse Time Migration...")
