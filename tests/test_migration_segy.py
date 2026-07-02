@@ -69,7 +69,7 @@ def test_edge_case_missing_velocity(dummy_dataset_dir):
     os.remove(v0_path)
     os.remove(vel_path)
     
-    with pytest.raises(FileNotFoundError, match="Neither smooth_velocity.segy nor velocity_model.segy found"):
+    with pytest.raises(FileNotFoundError, match="smooth_velocity.segy not found"):
         load_dataset_dir(dummy_dataset_dir, require_f0=False)
 
 def test_edge_case_missing_f0(dummy_dataset_dir):

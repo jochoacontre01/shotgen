@@ -12,10 +12,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-cli", action="store_true", help="setup runtime for non-gui interface")
 args = parser.parse_args()
 
-shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_15src_100hz_15goffset_45soffset_sigsbee_dataset"
+shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_5src_30hz_50goffset_300soffset_10snr"
 
-dx_spacing = 1.0 
-dz_spacing = 1.0 
+dx_spacing = 5.0 
+dz_spacing = 5.0 
 
 migrator = KirchhoffMigration(
     dataset_dir=shotpath,

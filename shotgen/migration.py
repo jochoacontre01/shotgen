@@ -241,6 +241,16 @@ class ReverseTimeMigration:
             # Resample geometry to the dataset's dt (in ms)
             dt_data = (time[1] - time[0]) * 1000.0
             self.geometry.resample(dt_data)
+            
+            # Align self.shots time dimension with self.geometry.nt to avoid Devito time_size mismatch
+            nt_target = self.geometry.nt
+            nt_actual = self.shots.shape[1]
+            if nt_actual != nt_target:
+                if nt_actual < nt_target:
+                    padding = np.zeros((self.shots.shape[0], nt_target - nt_actual, self.shots.shape[2]), dtype=self.shots.dtype)
+                    self.shots = np.concatenate([self.shots, padding], axis=1)
+                else:
+                    self.shots = self.shots[:, :nt_target, :]
         else:
             source_locations = np.empty((self.n_sources, 2), dtype=np.float32)
             source_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_sources)
@@ -374,6 +384,16 @@ class ReverseTimeMigration:
         
         # Cast to float32 to avoid warnings
         shot_records = shot_records.astype(np.float32)
+        
+        # Align shot_records time dimension with self.geometry.nt
+        nt_target = self.geometry.nt
+        nt_actual = shot_records.shape[1]
+        if nt_actual != nt_target:
+            if nt_actual < nt_target:
+                padding = np.zeros((shot_records.shape[0], nt_target - nt_actual, shot_records.shape[2]), dtype=shot_records.dtype)
+                shot_records = np.concatenate([shot_records, padding], axis=1)
+            else:
+                shot_records = shot_records[:, :nt_target, :]
         
         for i in tqdm(range(nshots), desc="source", total=nshots):
             self.geometry.src_positions[0, :] = self.sources[i, :]
@@ -596,6 +616,13 @@ class KirchhoffMigration:
         if dataset_dir is not None:
             vp, sources, receivers, shots, time, _, dx, dz = load_dataset_dir(dataset_dir, require_f0=False)
             spacing = (dx, dz)
+            # Convert physical coordinates (meters) to grid indices
+            sources = sources.copy()
+            sources[..., 0] /= dx
+            sources[..., 1] /= dz
+            receivers = receivers.copy()
+            receivers[..., 0] /= dx
+            receivers[..., 1] /= dz
 
         self.vp = vp
         self.sources = sources

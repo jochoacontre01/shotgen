@@ -24,7 +24,7 @@ shot = ShotRecord(
     nz=nz,
     dx=dx,
     dz=dx,
-    n_sources=4,
+    n_sources=5,
     n_receivers=32,
     f0=30, # high frequency yields numerical instability
     # src_origin=(0,10),
@@ -56,10 +56,10 @@ shot.set_model(vp)
 shot.show_model(cmap="turbo", cli=args.cli)
 
 start = perf_counter()
-data = shot.run(1000) # 550
+data = shot.run(2000) # 550
 end = perf_counter()
 
 print(f"Simulation ended after {end-start};.6f seconds")
 shot.show_shot(cmap="grey", cli=args.cli)
 
-shot.save_shot(f"data/{shot.gather.replace(" ","")}-shot_{nx}nx_{nz}nz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_snr{shot.snr}")
+shot.save_shot(f"data/{shot.gather.replace(" ","")}-shot_{nx}nx_{nz}nz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{shot.snr}snr")

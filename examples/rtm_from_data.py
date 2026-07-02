@@ -10,10 +10,10 @@ import time
 
 def main(cli=False):
     # 1. Locate and load the Sigsbee shot record file
-    shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_15src_100hz_15goffset_45soffset_sigsbee_dataset"
+    shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_5src_30hz_50goffset_300soffset_10snr"
     print(f"Loading shot record from: {shotpath}")
     
-    nbl = 40
+    nbl = 200
 
     # 3. Initialize native ReverseTimeMigration directly using the SEGY dataset directory
     rtm = ReverseTimeMigration(
@@ -37,7 +37,7 @@ def main(cli=False):
     # Exclude boundary (nbl) for plotting
     plotted_image = lap_image[nbl:-nbl, nbl:-nbl]
    
-    np.save("rtm.npy", plotted_image)
+    # np.save("rtm.npy", plotted_image)
     # Compute display extent in meters
     model = rtm.model
     extent = [
@@ -46,8 +46,8 @@ def main(cli=False):
         model.origin[1] + (model.shape[1] - nbl) * dz_spacing, 
         model.origin[1] + nbl * dz_spacing
     ]
-    vmax = np.quantile(plotted_image, 0.9)
-    vmin = -vmax
+    vmin = np.quantile(laplace(plotted_image), 0.10)
+    vmax = np.quantile(laplace(plotted_image), 0.85)
     print("Plotting results...")
     plt.figure(figsize=(12, 6))
     plt.imshow(
@@ -65,7 +65,7 @@ def main(cli=False):
     
     output_plot_path = Path(__file__).resolve().parent / "rtm_migrated_sigsbee.png"
     # plt.savefig(output_plot_path, bbox_inches="tight")
-    print(f"Plot saved to: {output_plot_path}")
+    # print(f"Plot saved to: {output_plot_path}")
     if cli:
         plt.savefig("img.png")
         subprocess.run("timg img.png".split())
