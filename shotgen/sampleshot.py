@@ -72,7 +72,7 @@ class ShotRecord:
         group_offset=1,
         shot_offset=1,
         smooth=5,
-        noise_scale=0.05,
+        snr=None,
         engine="pylops",
         float_type=np.float32
     ):
@@ -103,8 +103,8 @@ class ShotRecord:
             Number of cells to use in the damping border
         gather : str
             Type of shot gather. Can be 'common midpoint', 'common shot'.
-        noise_scale : float
-            Scale of the random noise to add to the shot data as a percentage of the maximum shot amplitude
+        snr : float, optional
+            Signal-to-noise ratio. Noise is added per-trace such that RMS(trace)/snr = std(noise). If None, no noise is added.
         """
         self.engine = engine
         self.float_type = float_type
@@ -128,7 +128,7 @@ class ShotRecord:
         self.vel = None
         self.smooth = smooth
         self.origin = origin
-        self.noise_scale = noise_scale
+        self.snr = snr
         
         self.src_origin = src_origin
         self.rec_origin = rec_origin
@@ -353,9 +353,7 @@ class ShotRecord:
                 for si, s in tqdm(enumerate(self.sources), desc="Source", total=self.n_sources)
             )
             run = np.array(run, dtype=self.float_type)
-            
-            noise = np.random.normal(0, self.noise_scale*np.median(run), run.shape).astype(self.float_type)
-            self.shot_run = run + noise
+            self.shot_run = run
             
             # Re-instantiate the last operator to populate metadata (self.aop, self.src, self.dt)
             # This is necessary because the parallel workers do not update the main object instance
@@ -403,8 +401,7 @@ class ShotRecord:
             self.dt = self.aop.geometry.dt
             
             run = Aop @ dv
-            noise = np.random.normal(0, self.noise_scale*np.median(run), run.shape)
-            self.shot_run = run + noise
+            self.shot_run = run
             self.src = self.aop.geometry.src.data[:, 0]
             
     def run(self, ms=500, gain=None, **devito_kwargs):
@@ -440,6 +437,12 @@ class ShotRecord:
                 self._setup_devito(ms)
                 self._execute_devito(**devito_kwargs)
             
+            if self.snr is not None:
+                rms = np.sqrt(np.mean(self.shot_run**2, axis=-1, keepdims=True))
+                noise_std = rms / self.snr
+                noise = np.random.standard_normal(size=self.shot_run.shape).astype(self.float_type)
+                self.shot_run += (noise * noise_std)
+
             if gain is not None:
                 self.shot_run = self.apply_gain(gain)
             
@@ -496,14 +499,15 @@ class ShotRecord:
                 
         print(f"Saved simulation files to folder {name}")
     
-    def show_shot(self, cmap="seismic"):
+    def show_shot(self, cmap="seismic", cli=False):
         """
         Visualize all generated shot records side-by-side.
         """
         if self.shot_run is not None:
             
             shots_stack = np.hstack([shot.T for shot in self.shot_run])
-            vmax = np.max([np.abs(np.amin(self.shot_run)), np.abs(np.amax(self.shot_run))])
+#            vmax = np.max([np.abs(np.amin(self.shot_run)), np.abs(np.amax(self.shot_run))])
+            vmax = np.quantile(self.shot_run, 0.95)
             vmin = -vmax
             
             fig = plt.figure(figsize=(10, 6))
@@ -530,7 +534,13 @@ class ShotRecord:
             fig.supxlabel("rec [m]")
             fig.supylabel("t [s]")
             # plt.subplots_adjust(wspace=0)
-            plt.show()
+            if cli:
+                plt.savefig("img.png")
+                subprocess.run("timg img.png".split())
+                time.sleep(0.5)
+                subprocess.run("rm img.png".split())
+            else:
+                plt.show()
             
                 
 
