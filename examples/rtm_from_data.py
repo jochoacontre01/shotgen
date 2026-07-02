@@ -4,10 +4,13 @@ from pathlib import Path
 from scipy.ndimage import laplace
 from shotgen.sampleshot import LoadShotRecord
 from shotgen.migration import ReverseTimeMigration
+import argparse
+import subprocess
+import time
 
-def main():
+def main(cli=False):
     # 1. Locate and load the Sigsbee shot record file
-    shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_50nz_32rec_6src_250hz_10goffset_45soffset_sigsbee_dataset"
+    shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_15src_100hz_15goffset_45soffset_sigsbee_dataset"
     print(f"Loading shot record from: {shotpath}")
     
     # 2. Spatial spacing (dx = 1.0, dz = 1.0) and absorbing boundary size
@@ -36,7 +39,8 @@ def main():
     
     # Exclude boundary (nbl) for plotting
     plotted_image = lap_image[nbl:-nbl, nbl:-nbl]
-    
+   
+    np.save("rtm.npy", plotted_image)
     # Compute display extent in meters
     model = rtm.model
     extent = [
@@ -45,14 +49,17 @@ def main():
         model.origin[1] + (model.shape[1] - nbl) * dz_spacing, 
         model.origin[1] + nbl * dz_spacing
     ]
-
+    vmax = np.quantile(plotted_image, 0.9)
+    vmin = -vmax
     print("Plotting results...")
     plt.figure(figsize=(12, 6))
     plt.imshow(
         plotted_image.T,
         cmap="gray",
         extent=extent,
-        aspect="auto"
+        aspect="auto",
+        vmin=vmin,
+        vmax=vmax
     )
     plt.colorbar(label="Amplitude")
     plt.xlabel("Distance (m)")
@@ -62,7 +69,16 @@ def main():
     output_plot_path = Path(__file__).resolve().parent / "rtm_migrated_sigsbee.png"
     # plt.savefig(output_plot_path, bbox_inches="tight")
     print(f"Plot saved to: {output_plot_path}")
-    plt.show()
+    if cli:
+        plt.savefig("img.png")
+        subprocess.run("timg img.png".split())
+        time.sleep(0.5)
+        subprocess.run("rm img.png".split())
+    else:
+        plt.show()
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-cli", action="store_true")
+    args = parser.parse_args()
+    main(args.cli)
