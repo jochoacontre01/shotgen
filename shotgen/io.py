@@ -198,19 +198,31 @@ class SegyIO:
     @staticmethod
     def read_model(filepath):
         """
-        Read a 2D velocity model array from a SEGY file.
-        
+        Read a 2D velocity model array and dimensions from a SEGY file.
+
         Parameters
         ----------
         filepath : str
             The path to the SEGY file.
-            
+
         Returns
         -------
-        ndarray
-            The 2D model array.
+        tuple
+            (data, dx, dz) where data is the 2D model array, and dx/dz are spacings.
         """
         with segyio.open(filepath, "r", strict=False) as f:
             data = segyio.tools.collect(f.trace)
-        return data
+            dz = f.bin[segyio.BinField.Interval] / 1000.0
+            nx = len(f.trace)
+            if nx > 1:
+                dx = (f.header[1][segyio.TraceField.CDP_X] - f.header[0][segyio.TraceField.CDP_X]) / 1000.0
+            else:
+                dx = 1.0
+            
+            # fallback to 1.0 if not written correctly (e.g. older files)
+            if dx <= 0.0:
+                dx = 1.0
+            if dz <= 0.0:
+                dz = 1.0
 
+        return data, dx, dz

@@ -135,11 +135,11 @@ class ShotRecord:
         
         if self.gather == "common shot":
             initial_nx = int(self.nx)
-            new_nx = self.src_origin[0] + self.n_sources*self.shot_offset + self.n_receivers*self.group_offset
+            new_nx_physical = self.src_origin[0] + self.n_sources*self.shot_offset + self.n_receivers*self.group_offset
             self._set_common_shot()
             
-            if new_nx > initial_nx:
-                self.nx = int(new_nx)
+            if new_nx_physical > initial_nx * self.dx:
+                self.nx = int(np.ceil(new_nx_physical / self.dx))
                 warnings.warn(
                     f"\nThe initial shape ({int(initial_nx)}, {int(self.nz)}) is too small for the required geometry."
                     f"\nAfter modification, the new shape is ({int(self.nx)}, {int(self.nz)})",
@@ -223,7 +223,8 @@ class ShotRecord:
                 recs_4plot_z = self.recs[:, 1]
                 
             plt.figure(figsize=(10, 5))
-            im = plt.imshow(self.vel.T, extent=(self.origin[0], self.nx, self.nz, self.origin[-1]), **kwargs)
+            extent = (self.origin[0], self.origin[0] + self.nx * self.dx, self.origin[-1] + self.nz * self.dz, self.origin[-1])
+            im = plt.imshow(self.vel.T, extent=extent, **kwargs)
             if draw_recs:
                 plt.scatter(recs_4plot_x, recs_4plot_z, marker="v", s=150, c="b", edgecolors="k")
                 plt.scatter(self.sources[:, 0], self.sources[:, 1], marker="*", s=150, c="r", edgecolors="k")
@@ -233,7 +234,7 @@ class ShotRecord:
             plt.axis("tight")
             plt.xlabel("x [m]"), plt.ylabel("z [m]")
             plt.title("Velocity")
-            plt.xlim(self.origin[0], self.nx)
+            plt.xlim(self.origin[0], self.origin[0] + self.nx * self.dx)
             plt.tight_layout()
             if cli:
                 plt.savefig("img.png", dpi=100)
@@ -632,9 +633,9 @@ class LoadShotRecord:
         
         # Load models
         if os.path.exists(vel_path):
-            self.velocity_model = SegyIO.read_model(vel_path)
+            self.velocity_model, self.dx, self.dz = SegyIO.read_model(vel_path)
         if os.path.exists(v0_path):
-            self.smooth_velocity = SegyIO.read_model(v0_path)
+            self.smooth_velocity, self.dx, self.dz = SegyIO.read_model(v0_path)
             
         # Load metadata
         if os.path.exists(meta_path):

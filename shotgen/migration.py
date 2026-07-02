@@ -28,9 +28,9 @@ def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None):
     meta_path = os.path.join(dataset_dir, "metadata.h5")
     
     if os.path.exists(v0_path):
-        vp = SegyIO.read_model(v0_path)
+        vp, dx, dz = SegyIO.read_model(v0_path)
     # elif os.path.exists(vel_path):
-    #     vp = SegyIO.read_model(vel_path)
+    #     vp, dx, dz = SegyIO.read_model(vel_path)
     else:
         raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
         
@@ -64,7 +64,7 @@ def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None):
     if require_f0 and f0 is None:
         raise ValueError(f"f0 is required for RTM but was not found in {meta_path} and not provided as an argument.")
         
-    return vp, sources, receivers, shots, time, f0
+    return vp, sources, receivers, shots, time, f0, dx, dz
 
 class ReverseTimeMigration:
     """
@@ -162,7 +162,8 @@ class ReverseTimeMigration:
     ):
         # Parse arguments to support both positional and keyword arguments for both modes
         if dataset_dir is not None:
-            vp, sources, receivers, shots, time, f0 = load_dataset_dir(dataset_dir, require_f0=True, provided_f0=f0)
+            vp, sources, receivers, shots, time, f0, dx, dz = load_dataset_dir(dataset_dir, require_f0=True, provided_f0=f0)
+            spacing = (dx, dz)
             self.from_data = True
         elif sources is not None:
             self.from_data = True
@@ -440,7 +441,12 @@ class ReverseTimeMigrationGPU:
         time=None,
     ):
         if dataset_dir is not None:
-            velocity_model, sources, receivers, shot_record, time, f0 = load_dataset_dir(dataset_dir, require_f0=True, provided_f0=f0)
+            velocity_model, sources, receivers, shot_record, time, f0, dx, dz = load_dataset_dir(dataset_dir, require_f0=True, provided_f0=f0)
+            self.dx = dx
+            self.dz = dz
+        else:
+            self.dx = 1.0
+            self.dz = 1.0
             # We don't have wavelet exactly from SEGY, so if not loaded elsewhere we need it, but LoadDataset doesn't return wavelet currently unless we read h5
             import h5py
             import os
@@ -457,7 +463,6 @@ class ReverseTimeMigrationGPU:
         self.f0 = f0
         self.time = time
         self.dt = time[1] - time[0]
-        self.dx = 1
         self.nshots = self.shot_record.shape[0]
         self.nreceivers = len(self.receivers)
         
@@ -589,7 +594,8 @@ class KirchhoffMigration:
         dataset_dir: str = None,
     ):
         if dataset_dir is not None:
-            vp, sources, receivers, shots, time, _ = load_dataset_dir(dataset_dir, require_f0=False)
+            vp, sources, receivers, shots, time, _, dx, dz = load_dataset_dir(dataset_dir, require_f0=False)
+            spacing = (dx, dz)
 
         self.vp = vp
         self.sources = sources
