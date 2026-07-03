@@ -1,3 +1,4 @@
+import os
 from joblib import Parallel, delayed
 import skfmm
 from matplotlib import pyplot as plt
@@ -174,7 +175,16 @@ class ReverseTimeMigration:
 
         if self.from_data:
             # Keyword/data-driven signature
-            origin = kwargs.get("origin", (0.0, 0.0))
+            origin = kwargs.get("origin")
+            if origin is None and dataset_dir is not None:
+                meta_path = os.path.join(dataset_dir, "metadata.h5")
+                if os.path.exists(meta_path):
+                    import h5py
+                    with h5py.File(meta_path, "r") as f:
+                        if "origin" in f:
+                            origin = tuple(f["origin"][()])
+            if origin is None:
+                origin = (0.0, 0.0)
             
             n_sources = sources.shape[0]
             n_receivers = receivers.shape[1] if receivers.ndim == 3 else receivers.shape[0]
@@ -539,6 +549,13 @@ class ReverseTimeMigrationGPU:
         return scatter.detach().numpy()
 
 
+class KirchhoffModel:
+    """Lightweight model container representing grid shape and origin for Kirchhoff migration."""
+    def __init__(self, shape, origin=(0.0, 0.0)):
+        self.shape = shape
+        self.origin = origin
+
+
 class KirchhoffMigration:
     """
     Kirchhoff pre-stack depth migration (PSDM) for 2D seismic data.
@@ -613,16 +630,26 @@ class KirchhoffMigration:
         spacing:tuple = (1.0, 1.0),
         dataset_dir: str = None,
     ):
+        origin = (0.0, 0.0)
         if dataset_dir is not None:
             vp, sources, receivers, shots, time, _, dx, dz = load_dataset_dir(dataset_dir, require_f0=False)
             spacing = (dx, dz)
-            # Convert physical coordinates (meters) to grid indices
+            
+            # Read origin from metadata.h5
+            meta_path = os.path.join(dataset_dir, "metadata.h5")
+            if os.path.exists(meta_path):
+                import h5py
+                with h5py.File(meta_path, "r") as f:
+                    if "origin" in f:
+                        origin = tuple(f["origin"][()])
+
+            # Convert physical coordinates (meters) to grid indices relative to origin
             sources = sources.copy()
-            sources[..., 0] /= dx
-            sources[..., 1] /= dz
+            sources[..., 0] = (sources[..., 0] - origin[0]) / dx
+            sources[..., 1] = (sources[..., 1] - origin[1]) / dz
             receivers = receivers.copy()
-            receivers[..., 0] /= dx
-            receivers[..., 1] /= dz
+            receivers[..., 0] = (receivers[..., 0] - origin[0]) / dx
+            receivers[..., 1] = (receivers[..., 1] - origin[1]) / dz
 
         self.vp = vp
         self.sources = sources
@@ -630,6 +657,8 @@ class KirchhoffMigration:
         self.shots = shots
         self.time = time
         self.spacing = spacing
+        self.origin = origin
+        self.model = KirchhoffModel(shape=self.vp.shape, origin=self.origin)
 
         self._gather_unique_coords()
         self._setup_solver()
@@ -668,15 +697,15 @@ class KirchhoffMigration:
         # Build spatial coordinate grids for calculating analytical distances
 
         nx, nz = self.vp.shape
-        x_coords = np.arange(nx) * self.spacing[0]
-        z_coords = np.arange(nz) * self.spacing[1]
+        x_coords = self.origin[0] + np.arange(nx) * self.spacing[0]
+        z_coords = self.origin[1] + np.arange(nz) * self.spacing[1]
         X, Z = np.meshgrid(x_coords, z_coords, indexing='ij')
         eps = 1e-4 # Small epsilon to prevent division by zero at source/receiver points
         
         for si, source in enumerate(self.sources):
             
             # Source physical coordinates
-            sx, sz = source[0] * self.spacing[0], source[1] * self.spacing[1]
+            sx, sz = self.origin[0] + source[0] * self.spacing[0], self.origin[1] + source[1] * self.spacing[1]
             
             # Distance from source to all grid points
             Rs = np.sqrt((X - sx)**2 + (Z - sz)**2) + eps
@@ -697,8 +726,8 @@ class KirchhoffMigration:
                 trace = self.shots[si, ri]
                 
                 # Receiver physical coordinates
-                rx = rec_coord[0] * self.spacing[0]
-                rz = rec_coord[1] * self.spacing[1]
+                rx = self.origin[0] + rec_coord[0] * self.spacing[0]
+                rz = self.origin[1] + rec_coord[1] * self.spacing[1]
                 
                 # Distance from receiver to all grid points
                 Rr = np.sqrt((X - rx)**2 + (Z - rz)**2) + eps

@@ -4,14 +4,17 @@ from time import perf_counter
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-cli", action="store_true", help="setup runtime for non-gui interface")
+parser.add_argument("-c", "--cli", action="store_true", help="Setup runtime for non-gui interface")
+parser.add_argument("-y", "--yes", action="store_true", help="Proceed with modeling after showing model geometry.")
+parser.add_argument("-s", "--save", action="store_true", help="Save the model to disk or discard after modeling.")
 args = parser.parse_args()
 
 vp = load_marmousi()
-dx = 5
+dx = 10
 
 # vp = GeoModel(750, 50).foothills(
-vp = vp[3000:9000:dx, 250:2000:dx] #vp[:7000:5, :2000:5]
+vp = vp[5000:12000:dx, ::dx] #vp[:7000:5, :2000:5]
+print(vp.shape)
 
 
 nx = vp.shape[0]
@@ -25,14 +28,15 @@ shot = ShotRecord(
     dx=dx,
     dz=dx,
     n_sources=5,
-    n_receivers=32,
+    n_receivers=24,
     f0=30, # high frequency yields numerical instability
     # src_origin=(0,10),
     # rec_origin=(0,2),
-    src_origin=(0.0,2.0),
-    rec_origin=(0.0,2.0),
-    group_offset=50.0, # offset between receivers
-    shot_offset=300.0, # offset between shots
+    src_origin=(500.0,2.0),
+    rec_origin=(500.0,2.0),
+    origin=(5000.0, 0.0),
+    group_offset=120.0, # offset between receivers
+    shot_offset=400.0, # offset between shots
     gather="common shot",
     smooth=5,
     snr=10,
@@ -55,11 +59,13 @@ shot.set_model(vp)
 
 shot.show_model(cmap="turbo", cli=args.cli)
 
-start = perf_counter()
-data = shot.run(2000) # 550
-end = perf_counter()
+if args.yes:
+    start = perf_counter()
+    data = shot.run(3000) # 550
+    end = perf_counter()
 
-print(f"Simulation ended after {end-start};.6f seconds")
-shot.show_shot(cmap="grey", cli=args.cli)
+    print(f"Simulation ended after {end-start};.6f seconds")
+    shot.show_shot(cmap="grey", cli=args.cli)
 
-shot.save_shot(f"data/{shot.gather.replace(" ","")}-shot_{nx}nx_{nz}nz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{shot.snr}snr")
+if args.save:
+    shot.save_shot(f"data/{shot.gather.replace(" ","")}-shot_{nx}nx_{nz}nz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{shot.snr}snr")

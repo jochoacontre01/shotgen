@@ -68,6 +68,11 @@ def test_kirchhoff_migration_success(small_migration_dataset):
     assert migrator.shots is not None
     assert migrator.time is not None
     
+    # Verify migrator.model exists and matches expected properties
+    assert migrator.model is not None
+    assert migrator.model.shape == migrator.vp.shape
+    assert migrator.model.origin == (0.0, 0.0)
+    
     # Run the Kirchhoff migration
     image = migrator.run()
     
@@ -120,3 +125,108 @@ def test_rtm_migration_success(small_migration_dataset):
     # Validate non-emptiness
     print(f"RTM Image shape: {plotted_image.shape}, min: {plotted_image.min()}, max: {plotted_image.max()}")
     assert np.max(np.abs(plotted_image)) > 1e-12
+
+
+def test_origin_immutability():
+    """Asserts that providing/setting a second 'origin' value to an already instantiated
+
+    ShotRecord does not change the initial origin.
+    """
+    shot_rec = ShotRecord(
+        nx=50, nz=40, dx=10.0, dz=10.0,
+        n_receivers=5, n_sources=1,
+        origin=(100.0, 200.0),
+        engine="pylops"
+    )
+    assert shot_rec.origin == (100.0, 200.0)
+    
+    # Attempt to change origin directly via attribute assignment
+    shot_rec.origin = (500.0, 600.0)
+    assert shot_rec.origin == (100.0, 200.0)  # Should remain unchanged
+
+
+def test_spatial_boundary_enforcement():
+    """Asserts that ShotRecord raises a ValueError when given geometry
+
+    that falls outside the model bounds.
+    """
+    # 1. Source falls outside bounds (x coordinate exceeds nx * dx)
+    with pytest.raises(ValueError, match="Source coordinate X is outside model bounds"):
+        ShotRecord(
+            nx=50, nz=40, dx=10.0, dz=10.0,
+            n_receivers=5, n_sources=1,
+            src_origin=(600.0, 20.0),  # Max valid x is 50 * 10 = 500
+            origin=(0, 0),
+            engine="pylops"
+        )
+
+    # 2. Receiver falls outside bounds (z coordinate exceeds nz * dz)
+    with pytest.raises(ValueError, match="Receiver coordinate Z is outside model bounds"):
+        ShotRecord(
+            nx=50, nz=40, dx=10.0, dz=10.0,
+            n_receivers=5, n_sources=1,
+            rec_origin=(10.0, 500.0),  # Max valid z is 40 * 10 = 400
+            origin=(0, 0),
+            engine="pylops"
+        )
+
+
+def test_origin_persistence_and_roundtrip(tmp_path):
+    """Verifies that an arbitrary origin (x, z) provided to ShotRecord is
+
+    correctly written to and read back from h5/segy files, and the full
+    round-trip migration uses the intended origin without user intervention.
+    """
+    dataset_dir = os.path.join(tmp_path, "roundtrip_dataset")
+    arbitrary_origin = (350.0, 450.0)
+    
+    # 1. Generate record with arbitrary origin
+    nx, nz = 50, 40
+    dx, dz = 10.0, 10.0
+    shot_rec = ShotRecord(
+        nx=nx, nz=nz, dx=dx, dz=dz,
+        n_receivers=4, n_sources=2,
+        f0=25.0,
+        src_origin=(50.0, 10.0),
+        rec_origin=(50.0, 10.0),
+        group_offset=30.0,
+        shot_offset=50.0,
+        origin=arbitrary_origin,
+        engine="pylops"
+    )
+    dummy_vel = np.ones((nx, nz)) * 2000.0
+    shot_rec.set_model(dummy_vel)
+    shot_rec.run(ms=10)
+    shot_rec.save_shot(dataset_dir)
+    
+    # 2. Initialize Kirchhoff PSDM directly using the dataset directory (no origin parameter passed)
+    migrator = KirchhoffMigration(
+        dataset_dir=dataset_dir
+    )
+    
+    # 3. Assert origin was correctly read back and anchors geometry
+    assert migrator.origin == arbitrary_origin
+    assert migrator.model.origin == arbitrary_origin
+    
+    # Check that model shape matches grid dimensions
+    assert migrator.model.shape == (nx, nz)
+    
+    # Verify migration runs successfully and anchors geometry
+    image = migrator.run()
+    assert image is not None
+    assert image.shape == (nx, nz)
+    
+    # 4. Check RTM parsed origin read-back and successful run
+    rtm = ReverseTimeMigration(
+        dataset_dir=dataset_dir,
+        nbl=5,
+        space_order=2
+    )
+    
+    # Note: RTM reads origin from dataset_dir if not overridden via kwargs
+    assert rtm.origin == arbitrary_origin
+    assert rtm.model.origin == arbitrary_origin
+    
+    rtm_image = rtm.run(save_wavefield=False)
+    assert rtm_image is not None
+

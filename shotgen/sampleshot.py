@@ -16,10 +16,29 @@ from joblib import Parallel, delayed
 import warnings
 import subprocess
 import time
+import contextlib
+import joblib
 
 configuration["log-level"] = "WARNING"
 
-        
+
+@contextlib.contextmanager
+def tqdm_joblib(tqdm_object):
+    """Context manager to patch joblib to report into tqdm progress bar."""
+    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
+        def __call__(self, *args, **kwargs):
+            tqdm_object.update(n=self.batch_size)
+            return super().__call__(*args, **kwargs)
+
+    old_batch_callback = joblib.parallel.BatchCompletionCallBack
+    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
+    try:
+        yield tqdm_object
+    finally:
+        joblib.parallel.BatchCompletionCallBack = old_batch_callback
+        tqdm_object.close()
+
+
 class ShotRecord:
     """
     A class to generate and manage 2D acoustic wave propagation shot records.
@@ -53,6 +72,33 @@ class ShotRecord:
         The simulated shot records after running the modeling.
     """
     
+    @property
+    def origin(self):
+        if not hasattr(self, '_origin'):
+            self._origin = (0.0, 0.0)
+        return self._origin
+
+    @origin.setter
+    def origin(self, value):
+        if not hasattr(self, '_origin'):
+            self._origin = value
+
+    def validate_spatial_bounds(self):
+        max_x = self.nx * self.dx
+        max_z = self.nz * self.dz
+        if hasattr(self, 'sources') and self.sources is not None:
+            local_sources = self.sources - np.array(self.origin)
+            if np.any(local_sources[..., 0] < 0.0) or np.any(local_sources[..., 0] > max_x):
+                raise ValueError(f"Source coordinate X is outside model bounds [0, {max_x}] relative to the origin.")
+            if np.any(local_sources[..., 1] < 0.0) or np.any(local_sources[..., 1] > max_z):
+                raise ValueError(f"Source coordinate Z is outside model bounds [0, {max_z}] relative to the origin.")
+        if hasattr(self, 'recs') and self.recs is not None:
+            local_recs = self.recs - np.array(self.origin)
+            if np.any(local_recs[..., 0] < 0.0) or np.any(local_recs[..., 0] > max_x):
+                raise ValueError(f"Receiver coordinate X is outside model bounds [0, {max_x}] relative to the origin.")
+            if np.any(local_recs[..., 1] < 0.0) or np.any(local_recs[..., 1] > max_z):
+                raise ValueError(f"Receiver coordinate Z is outside model bounds [0, {max_z}] relative to the origin.")
+
     def __init__(
         self,
         nx,
@@ -122,7 +168,12 @@ class ShotRecord:
         self.n_sources = n_sources
         self.group_offset = group_offset
         self.shot_offset = shot_offset
-        self.gather = gather
+        if gather in ("cmp", "common midpoint"):
+            self.gather = "common midpoint"
+        elif gather in ("cs", "common shot"):
+            self.gather = "common shot"
+        else:
+            self.gather = gather
         
         self._model_ready = False
         self.vel = None
@@ -158,6 +209,12 @@ class ShotRecord:
             sz = np.ones(ns, dtype=self.float_type)*self.src_origin[1]
             sources = np.vstack((sx, sz))
             self.sources = sources.T if sources.ndim >= 2 else sources.reshape((-1,2))
+            
+            # Shift by self.origin to get absolute coordinates
+            self.sources[..., 0] += self.origin[0]
+            self.sources[..., 1] += self.origin[1]
+            self.recs[..., 0] += self.origin[0]
+            self.recs[..., 1] += self.origin[1]
         
         self.x = x
         self.z = z
@@ -171,6 +228,7 @@ class ShotRecord:
         self.src = None
         
         self.X, self.Z = np.meshgrid(np.arange(self.nx, dtype=self.float_type), np.arange(self.nz, dtype=self.float_type), indexing='ij')
+        self.validate_spatial_bounds()
     
     def _set_common_shot(self):
         
@@ -189,6 +247,12 @@ class ShotRecord:
             rx_list.append(np.vstack([rec_x, rec_z]).T)
         
         self.recs = np.array(rx_list)
+        
+        # Shift by self.origin to get absolute coordinates
+        self.sources[..., 0] += self.origin[0]
+        self.sources[..., 1] += self.origin[1]
+        self.recs[..., 0] += self.origin[0]
+        self.recs[..., 1] += self.origin[1]
                 
     def set_model(self, model):
         if model.shape[0] < self.nx:
@@ -247,10 +311,12 @@ class ShotRecord:
     def set_source_position(self, x_pos, y_pos):
         src_pos = np.vstack([x_pos, y_pos])
         self.sources = src_pos.T if src_pos.ndim >= 2 else src_pos.reshape((-1,2))
+        self.validate_spatial_bounds()
     
     def set_receiver_position(self, x_pos, y_pos):
         rec_pos = np.vstack([x_pos, y_pos]).T
         self.recs = rec_pos
+        self.validate_spatial_bounds()
         
     def _setup_devito(self, ms):
         vel = self.vel / 1000 # to km/s
@@ -331,7 +397,7 @@ class ShotRecord:
             def _process_single_shot(si, s):
                 Aop = pylops.waveeqprocessing.AcousticWave2D(
                     shape=(self.nx, self.nz),
-                    origin=(0,0),
+                    origin=self.origin,
                     spacing=(self.dx, self.dz),
                     vp=self.v0,
                     src_x=np.array([s[0]], dtype=float),
@@ -349,10 +415,11 @@ class ShotRecord:
                 return (Aop @ dv)[0]
 
             # Run the simulation in parallel using all available cores (n_jobs=-1)
-            run = Parallel(n_jobs=-1)(
-                delayed(_process_single_shot)(si, s) 
-                for si, s in tqdm(enumerate(self.sources), desc="Source", total=self.n_sources)
-            )
+            with tqdm_joblib(tqdm(desc="Source", total=self.n_sources)):
+                run = Parallel(n_jobs=-1)(
+                    delayed(_process_single_shot)(si, s) 
+                    for si, s in enumerate(self.sources)
+                )
             run = np.array(run, dtype=self.float_type)
             self.shot_run = run
             
@@ -362,7 +429,7 @@ class ShotRecord:
             si = self.n_sources - 1
             self.aop = pylops.waveeqprocessing.AcousticWave2D(
                 shape=(self.nx, self.nz),
-                origin=(0,0),
+                origin=self.origin,
                 spacing=(self.dx, self.dz),
                 vp=self.v0,
                 src_x=np.array([s[0]], dtype=self.float_type),
@@ -383,7 +450,7 @@ class ShotRecord:
         elif self.gather == "common midpoint":
             Aop = pylops.waveeqprocessing.AcousticWave2D(
                     shape=(self.nx, self.nz),
-                    origin=(0,0),
+                    origin=self.origin,
                     spacing=(self.dx, self.dz),
                     vp=self.v0,
                     src_x=self.sources[:, 0],
@@ -497,6 +564,8 @@ class ShotRecord:
                 f.create_dataset("wavelet", data=self.src)
             if hasattr(self, 'f0'):
                 f.create_dataset("f0", data=self.f0)
+            if hasattr(self, 'origin') and self.origin is not None:
+                f.create_dataset("origin", data=np.array(self.origin))
                 
         print(f"Saved simulation files to folder {name}")
     

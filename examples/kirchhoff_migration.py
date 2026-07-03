@@ -9,13 +9,16 @@ import subprocess
 import time
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-cli", action="store_true", help="setup runtime for non-gui interface")
+parser.add_argument("file", type=str, help="Dataset file to process")
+parser.add_argument("-c","--cli", action="store_true", help="setup runtime for non-gui interface")
 args = parser.parse_args()
 
-shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_5src_30hz_50goffset_300soffset_10snr"
-
-dx_spacing = 5.0 
-dz_spacing = 5.0 
+if args.file is not None:
+    shotpath = Path(__file__).resolve().parents[1] / args.file
+else:
+    raise ValueError("No data file was passed to the arguments, pass it with 'kirchhoff_migration.py -f path/to/file")
+dx_spacing = 10.0 
+dz_spacing = 10.0 
 
 migrator = KirchhoffMigration(
     dataset_dir=shotpath,
@@ -24,13 +27,23 @@ migrator = KirchhoffMigration(
 
 image = migrator.run()
 
+model = migrator.model
+plt.figure(figsize=(10, 5))
+extent = [
+    model.origin[0], 
+    model.origin[0] + model.shape[0] * dx_spacing,
+    model.origin[1] + model.shape[1] * dz_spacing, 
+    model.origin[1]
+]
 vmin = np.quantile(laplace(image), 0.10)
 vmax = np.quantile(laplace(image), 0.85)
-plt.imshow(laplace(image.T), cmap="gray", extent=[0, migrator.vp.shape[1]*dx_spacing, migrator.vp.shape[0]*dz_spacing, 0], aspect="auto", vmin=vmin, vmax=vmax)
-plt.colorbar(label="Amplitude")
+im = plt.imshow(laplace(image.T), cmap="gray", extent=extent, vmin=vmin, vmax=vmax)
+plt.colorbar(im, label="Amplitude", shrink=0.75)
 plt.xlabel("Distance (m)")
 plt.ylabel("Depth (m)")
 plt.title("Kirchhoff Migration Image")
+plt.gca().set_aspect("equal")
+plt.tight_layout()
 if args.cli:
     plt.savefig("img.png")
     subprocess.run("timg img.png".split())
