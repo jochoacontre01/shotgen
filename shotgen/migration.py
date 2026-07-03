@@ -263,13 +263,13 @@ class ReverseTimeMigration:
                     self.shots = self.shots[:, :nt_target, :]
         else:
             source_locations = np.empty((self.n_sources, 2), dtype=np.float32)
-            source_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_sources)
-            source_locations[:, 1] = 0.
+            source_locations[:, 0] = self.origin[0] + np.linspace(0, self.model.domain_size[0], num=self.n_sources)
+            source_locations[:, 1] = self.origin[1] + 0.
             self.sources = source_locations
             
             rec_locations = np.empty((self.n_receivers, 2))
-            rec_locations[:, 0] = np.linspace(0, self.model.domain_size[0], num=self.n_receivers)
-            rec_locations[:, 1] = 0.
+            rec_locations[:, 0] = self.origin[0] + np.linspace(0, self.model.domain_size[0], num=self.n_receivers)
+            rec_locations[:, 1] = self.origin[1] + 0.
             self.receivers = rec_locations
             
             self._create_geometry()
@@ -303,8 +303,8 @@ class ReverseTimeMigration:
     
     def _create_geometry(self):
         src_coordinates = np.empty((1, 2))
-        src_coordinates[0, :] = np.array(self.model.domain_size) * 0.5
-        src_coordinates[0, -1] = 0.0
+        src_coordinates[0, 0] = self.origin[0] + self.model.domain_size[0] * 0.5
+        src_coordinates[0, 1] = self.origin[1] + 0.0
         # If in data mode, use self.receivers if 2D, else use dummy placeholder receivers (will be updated dynamically)
         rec_positions = self.receivers[0] if (self.from_data and self.receivers.ndim == 3) else self.receivers
         self.geometry = AcquisitionGeometry(

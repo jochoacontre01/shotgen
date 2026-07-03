@@ -195,8 +195,9 @@ def test_origin_persistence_and_roundtrip(tmp_path):
         engine="pylops"
     )
     dummy_vel = np.ones((nx, nz)) * 2000.0
+    dummy_vel[:, nz//2:] = 2500.0  # Layered model with reflector
     shot_rec.set_model(dummy_vel)
-    shot_rec.run(ms=10)
+    shot_rec.run(ms=150)
     shot_rec.save_shot(dataset_dir)
     
     # 2. Initialize Kirchhoff PSDM directly using the dataset directory (no origin parameter passed)
@@ -215,6 +216,8 @@ def test_origin_persistence_and_roundtrip(tmp_path):
     image = migrator.run()
     assert image is not None
     assert image.shape == (nx, nz)
+    assert np.any(image != 0.0)
+    assert np.max(np.abs(image)) > 1e-12
     
     # 4. Check RTM parsed origin read-back and successful run
     rtm = ReverseTimeMigration(
@@ -229,4 +232,6 @@ def test_origin_persistence_and_roundtrip(tmp_path):
     
     rtm_image = rtm.run(save_wavefield=False)
     assert rtm_image is not None
+    assert np.any(rtm_image != 0.0)
+    assert np.max(np.abs(rtm_image)) > 1e-12
 

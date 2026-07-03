@@ -8,9 +8,12 @@ import argparse
 import subprocess
 import time
 
-def main(cli=False):
+def main(cli=False, file=None):
     # 1. Locate and load the Sigsbee shot record file
-    shotpath = Path(__file__).resolve().parents[1] / "data/commonshot-shot_1200nx_350nz_32rec_5src_30hz_50goffset_300soffset_10snr"
+    if file is not None:
+        shotpath = Path(__file__).resolve().parents[1] / file
+    else:
+        raise ValueError("No data file was passed to the arguments, pass it with 'rtm_from_data.py -f path/to/file")
     print(f"Loading shot record from: {shotpath}")
     
     nbl = 200
@@ -50,7 +53,7 @@ def main(cli=False):
     vmax = np.quantile(laplace(plotted_image), 0.85)
     print("Plotting results...")
     plt.figure(figsize=(12, 6))
-    plt.imshow(
+    im = plt.imshow(
         plotted_image.T,
         cmap="gray",
         extent=extent,
@@ -58,12 +61,12 @@ def main(cli=False):
         vmin=vmin,
         vmax=vmax
     )
-    plt.colorbar(label="Amplitude")
+    plt.colorbar(im, label="Amplitude", shrink=0.75)
     plt.xlabel("Distance (m)")
     plt.ylabel("Depth (m)")
-    plt.title("RTM Migrated Image (Sigsbee)")
+    plt.title("RTM Migration Image")
+    plt.tight_layout()
     
-    output_plot_path = Path(__file__).resolve().parent / "rtm_migrated_sigsbee.png"
     # plt.savefig(output_plot_path, bbox_inches="tight")
     # print(f"Plot saved to: {output_plot_path}")
     if cli:
@@ -76,6 +79,7 @@ def main(cli=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-cli", action="store_true")
+    parser.add_argument("file", type=str, help="Dataset file to process")
+    parser.add_argument("-c", "--cli", action="store_true")
     args = parser.parse_args()
-    main(args.cli)
+    main(args.cli, args.file)
