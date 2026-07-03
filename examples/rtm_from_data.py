@@ -43,11 +43,12 @@ def main(cli=False, file=None):
     # np.save("rtm.npy", plotted_image)
     # Compute display extent in meters
     model = rtm.model
+    print(model.origin, model.shape, rtm.spacing, nbl)
     extent = [
-        model.origin[0] + nbl * dx_spacing, 
-        model.origin[0] + (model.shape[0] - nbl) * dx_spacing,
-        model.origin[1] + (model.shape[1] - nbl) * dz_spacing, 
-        model.origin[1] + nbl * dz_spacing
+        model.origin[0] * dx_spacing, 
+        model.origin[0] + model.shape[0] * dx_spacing,
+        model.origin[1] + model.shape[1] * dz_spacing, 
+        model.origin[1] * dz_spacing
     ]
     vmin = np.quantile(laplace(plotted_image), 0.10)
     vmax = np.quantile(laplace(plotted_image), 0.85)
