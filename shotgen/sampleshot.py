@@ -161,8 +161,8 @@ class ShotRecord:
         self.dz = dz
         
         self.meters_per_cell = meters_per_cell
-        x = np.arange(0, nx, self.dx, dtype=self.float_type)#*self.dx
-        z = np.arange(0, nz, self.dz, dtype=self.float_type)#*self.dz
+        x = np.arange(nx, dtype=self.float_type) * self.dx
+        z = np.arange(nz, dtype=self.float_type) * self.dz
         
         self.n_receivers = n_receivers
         self.n_sources = n_sources
@@ -324,7 +324,7 @@ class ShotRecord:
             vp=vel,
             origin=self.origin,
             shape=vel.shape,
-            spacing=(self.meters_per_cell, self.meters_per_cell),
+            spacing=(self.dx, self.dz),
             space_order=self.fd_order,
             nbl=self.n_damping,
             bcs="damp",
@@ -337,7 +337,7 @@ class ShotRecord:
             vp=v0,
             origin=self.origin,
             shape=vel.shape,
-            spacing=(self.meters_per_cell, self.meters_per_cell),
+            spacing=(self.dx, self.dz),
             space_order=self.fd_order,
             nbl=self.n_damping,
             bcs="damp",
@@ -375,6 +375,7 @@ class ShotRecord:
         for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
 
             self._devito_geometry.src_positions[0, :] = self.sources[i, :]
+            self._devito_geometry.src.coordinates.data[0, :] = self.sources[i, :]
             
             true_d, _, _ = self._devito_solver.forward(vp=self._devito_model.vp)
             smooth_d, u0, _ = self._devito_solver.forward(vp=self._devito_model0.vp, save=True)
@@ -785,3 +786,13 @@ def load_complex_graben():
         seismic_data = f.trace.raw[:][:,::-1]
     
     return seismic_data
+
+def load_exact():
+    """
+    Load the exact velocity model from the newly created vel_z6.25m_x12.5m_exact.segy file.
+    """
+    filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/vel_z6.25m_x12.5m_exact.segy"
+    with segyio.open(filepath, "r", ignore_geometry=True) as f:
+        seismic_data = np.array(f.trace.raw[:])
+    return seismic_data
+
