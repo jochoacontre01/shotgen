@@ -787,7 +787,7 @@ def load_complex_graben():
     
     return seismic_data
 
-def load_exact():
+def load_bpsalt():
     """
     Load the exact velocity model from the newly created vel_z6.25m_x12.5m_exact.segy file.
     """
@@ -795,4 +795,19 @@ def load_exact():
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = np.array(f.trace.raw[:])
     return seismic_data
+
+def load_overthrust():
+    """
+    Load the 2D slice from the 3D overthrust velocity model.
+    Loads only the middle section along n3 (idx 455) from assets/marine_overthrust_3d.segy.
+    Returns a 2D array of shape (801, 185).
+    """
+    filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/marine_overthrust_3d.segy"
+    n2 = 801
+    start_trace = 455 * n2
+    end_trace = 456 * n2
+    with segyio.open(filepath, "r", ignore_geometry=True) as f:
+        seismic_data = np.array(f.trace.raw[start_trace:end_trace])
+    return seismic_data
+
 
