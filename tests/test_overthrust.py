@@ -4,7 +4,7 @@ from shotgen.sampleshot import load_overthrust, ShotRecord
 
 def test_load_overthrust():
     # 1. Load the overthrust model
-    vp = load_overthrust()
+    vp, _ = load_overthrust()
     
     # 2. Check dimensions
     assert vp.shape == (801, 185)
@@ -16,7 +16,7 @@ def test_load_overthrust():
 
 def test_shotrecord_with_overthrust():
     # Load and slice to a very small size for fast testing
-    vp_full = load_overthrust()
+    vp_full, _ = load_overthrust()
     vp = vp_full[300:350, :40] # shape (50, 40)
     
     nx, nz = vp.shape

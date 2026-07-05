@@ -11,7 +11,7 @@ def small_migration_dataset(tmp_path_factory):
     dataset_dir = tmp_path_factory.mktemp("test_migration_dataset")
     
     # 1. Load Marmousi model and slice it to be small
-    vp_full = load_marmousi()
+    vp_full, _ = load_marmousi()
     
     # Slice a small segment of Marmousi
     # Shape nx = 60, nz = 40, spacing = 10m
@@ -234,4 +234,38 @@ def test_origin_persistence_and_roundtrip(tmp_path):
     assert rtm_image is not None
     assert np.any(rtm_image != 0.0)
     assert np.max(np.abs(rtm_image)) > 1e-12
+
+
+def test_rtm_source_coordinates_updating(small_migration_dataset):
+    """Verifies that the RTM loop correctly updates the underlying Devito
+
+    geometry.src.coordinates.data buffer with the moving source locations.
+    """
+    nbl = 10
+    rtm = ReverseTimeMigration(
+        dataset_dir=small_migration_dataset,
+        nbl=nbl,
+        smooth_sigma=3.0,
+        space_order=2,
+    )
+    
+    original_forward = rtm.solver.forward
+    recorded_coords = []
+    
+    def dummy_forward(*args, **kwargs):
+        # Record the current source coordinates from the Devito geometry object
+        current_coord = rtm.geometry.src.coordinates.data.copy()
+        recorded_coords.append(current_coord)
+        return original_forward(*args, **kwargs)
+        
+    rtm.solver.forward = dummy_forward
+    
+    # Run the migration
+    rtm.run(save_wavefield=False)
+    
+    # Check that we have recorded coordinates for each source
+    assert len(recorded_coords) == rtm.n_sources
+    for i in range(rtm.n_sources):
+        # The coordinates in recorded_coords should match rtm.sources[i, :]
+        assert np.allclose(recorded_coords[i][0], rtm.sources[i], atol=1e-3)
 

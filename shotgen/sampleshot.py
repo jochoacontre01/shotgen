@@ -755,59 +755,222 @@ class LoadShotRecord:
         plt.gca().invert_yaxis()
         plt.show()
         
-def load_marmousi():
-    
-    filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/vp_marmousi-ii.segy"
-
+def _inject_headers_if_needed(filepath, dx, dz):
+    """
+    Open the SEG-Y file and inject DX and DZ into the headers if not already set.
+    """
+    need_injection = False
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
-        seismic_data = np.array(f.trace.raw[:])*1000
+        interval_val = f.bin[segyio.BinField.Interval]
+        tracecount = len(f.trace)
+        if tracecount == 641601:
+            n2 = 801
+        else:
+            n2 = tracecount
+            
+        if interval_val != int(dz * 1000):
+            need_injection = True
+        elif tracecount > 1 and f.header[1][segyio.TraceField.GroupX] != int(dx * 1000):
+            need_injection = True
+            
+    if need_injection:
+        print(f"Injecting spatial headers into {filepath}: dx={dx}, dz={dz}")
+        with segyio.open(filepath, "r+", ignore_geometry=True) as f:
+            f.bin[segyio.BinField.Interval] = int(dz * 1000)
+            for i in range(tracecount):
+                f.header[i][segyio.TraceField.TRACE_SAMPLE_COUNT] = int(dz * 1000)
+                f.header[i][segyio.TraceField.TRACE_SAMPLE_INTERVAL] = int(dz * 1000)
+                f.header[i][segyio.TraceField.SourceGroupScalar] = -1000
+                
+                inline = i % n2
+                crossline = i // n2
+                f.header[i][segyio.TraceField.GroupX] = int(inline * dx * 1000)
+                f.header[i][segyio.TraceField.SourceX] = int(inline * dx * 1000)
+                f.header[i][segyio.TraceField.CDP_X] = int(inline * dx * 1000)
+                f.header[i][segyio.TraceField.GroupY] = int(crossline * dx * 1000)
+                f.header[i][segyio.TraceField.SourceY] = int(crossline * dx * 1000)
+                
+        # Inject DZ into Binary Header bytes 117-118 for absolute compliance
+        with open(filepath, "r+b") as f_raw:
+            f_raw.seek(3200 + 117)
+            f_raw.write(int(dz * 1000).to_bytes(2, byteorder="big"))
+
+def load_marmousi():
+    filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/vp_marmousi-ii.segy"
+    _inject_headers_if_needed(filepath, dx=1.0, dz=1.0)
     
-    return seismic_data
+    with open(filepath, "rb") as f_raw:
+        f_raw.seek(3200 + 117)
+        dz_bin = int.from_bytes(f_raw.read(2), byteorder="big") / 1000.0
+        
+    with segyio.open(filepath, "r", ignore_geometry=True) as f:
+        seismic_data = np.array(f.trace.raw[:]) * 1000
+        dz_trace = f.header[0][segyio.TraceField.TRACE_SAMPLE_COUNT] / 1000.0
+        dz_parsed = dz_bin if dz_bin > 0 else dz_trace
+        nx_parsed = len(f.trace)
+        nz_parsed = f.bin[segyio.BinField.Samples]
+        scalar = f.header[0][segyio.TraceField.SourceGroupScalar]
+        if scalar < 0:
+            mult = 1.0 / abs(scalar)
+        elif scalar > 0:
+            mult = scalar
+        else:
+            mult = 1.0
+        dx_parsed = (f.header[1][segyio.TraceField.GroupX] - f.header[0][segyio.TraceField.GroupX]) * mult
+        metadata = {
+            "dx": dx_parsed,
+            "dz": dz_parsed,
+            "nx": nx_parsed,
+            "nz": nz_parsed,
+            "origin_x": 0.0,
+            "origin_z": 0.0
+        }
+    return seismic_data, metadata
 
 def load_sigsbee(reflection_coeffs=False):
-    
     filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/sigsbee2a_stratigraphy.sgy"
+    _inject_headers_if_needed(filepath, dx=1.0, dz=1.0)
+    
+    with open(filepath, "rb") as f_raw:
+        f_raw.seek(3200 + 117)
+        dz_bin = int.from_bytes(f_raw.read(2), byteorder="big") / 1000.0
+        
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = np.array(f.trace.raw[:])/3.281
+        dz_trace = f.header[0][segyio.TraceField.TRACE_SAMPLE_COUNT] / 1000.0
+        dz_parsed = dz_bin if dz_bin > 0 else dz_trace
+        nx_parsed = len(f.trace)
+        nz_parsed = f.bin[segyio.BinField.Samples]
+        scalar = f.header[0][segyio.TraceField.SourceGroupScalar]
+        if scalar < 0:
+            mult = 1.0 / abs(scalar)
+        elif scalar > 0:
+            mult = scalar
+        else:
+            mult = 1.0
+        dx_parsed = (f.header[1][segyio.TraceField.GroupX] - f.header[0][segyio.TraceField.GroupX]) * mult
+        metadata = {
+            "dx": dx_parsed,
+            "dz": dz_parsed,
+            "nx": nx_parsed,
+            "nz": nz_parsed,
+            "origin_x": 0.0,
+            "origin_z": 0.0
+        }
     
     if reflection_coeffs:
-        filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/sigsbee2a_reflection_coefficients.sgy"
-        with segyio.open(filepath, "r", ignore_geometry=True) as f:
-            ref_coeffs = np.array(f.trace.raw[:])/3.281
-        
-        return seismic_data, ref_coeffs
-    return seismic_data, None
+        ref_path = pathlib.Path(__file__).resolve().parents[1] / "assets/sigsbee2a_reflection_coefficients.sgy"
+        _inject_headers_if_needed(ref_path, dx=1.0, dz=1.0)
+        with segyio.open(ref_path, "r", ignore_geometry=True) as f_ref:
+            ref_coeffs = np.array(f_ref.trace.raw[:])/3.281
+        return (seismic_data, metadata), ref_coeffs
+    return seismic_data, metadata
 
 def load_complex_graben():
-    
     filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/complex_graben.sgy"
-
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = f.trace.raw[:][:,::-1]
-    
     return seismic_data
 
 def load_bpsalt():
-    """
-    Load the exact velocity model from the newly created vel_z6.25m_x12.5m_exact.segy file.
-    """
     filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/vel_z6.25m_x12.5m_exact.segy"
+    _inject_headers_if_needed(filepath, dx=12.5, dz=6.5)
+    
+    with open(filepath, "rb") as f_raw:
+        f_raw.seek(3200 + 117)
+        dz_bin = int.from_bytes(f_raw.read(2), byteorder="big") / 1000.0
+        
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = np.array(f.trace.raw[:])
-    return seismic_data
+        dz_trace = f.header[0][segyio.TraceField.TRACE_SAMPLE_COUNT] / 1000.0
+        dz_parsed = dz_bin if dz_bin > 0 else dz_trace
+        nx_parsed = len(f.trace)
+        nz_parsed = f.bin[segyio.BinField.Samples]
+        scalar = f.header[0][segyio.TraceField.SourceGroupScalar]
+        if scalar < 0:
+            mult = 1.0 / abs(scalar)
+        elif scalar > 0:
+            mult = scalar
+        else:
+            mult = 1.0
+        dx_parsed = (f.header[1][segyio.TraceField.GroupX] - f.header[0][segyio.TraceField.GroupX]) * mult
+        metadata = {
+            "dx": dx_parsed,
+            "dz": dz_parsed,
+            "nx": nx_parsed,
+            "nz": nz_parsed,
+            "origin_x": 0.0,
+            "origin_z": 0.0
+        }
+    return seismic_data, metadata
 
 def load_overthrust():
-    """
-    Load the 2D slice from the 3D overthrust velocity model.
-    Loads only the middle section along n3 (idx 455) from assets/marine_overthrust_3d.segy.
-    Returns a 2D array of shape (801, 185).
-    """
     filepath = pathlib.Path(__file__).resolve().parents[1] / "assets/marine_overthrust_3d.segy"
     n2 = 801
     start_trace = 455 * n2
     end_trace = 456 * n2
+    _inject_headers_if_needed(filepath, dx=25.0, dz=25.0)
+    
+    with open(filepath, "rb") as f_raw:
+        f_raw.seek(3200 + 117)
+        dz_bin = int.from_bytes(f_raw.read(2), byteorder="big") / 1000.0
+        
     with segyio.open(filepath, "r", ignore_geometry=True) as f:
         seismic_data = np.array(f.trace.raw[start_trace:end_trace])
-    return seismic_data
+        dz_trace = f.header[start_trace][segyio.TraceField.TRACE_SAMPLE_COUNT] / 1000.0
+        dz_parsed = dz_bin if dz_bin > 0 else dz_trace
+        nx_parsed = end_trace - start_trace
+        nz_parsed = f.bin[segyio.BinField.Samples]
+        scalar = f.header[start_trace][segyio.TraceField.SourceGroupScalar]
+        if scalar < 0:
+            mult = 1.0 / abs(scalar)
+        elif scalar > 0:
+            mult = scalar
+        else:
+            mult = 1.0
+        dx_parsed = (f.header[start_trace + 1][segyio.TraceField.GroupX] - f.header[start_trace][segyio.TraceField.GroupX]) * mult
+        metadata = {
+            "dx": dx_parsed,
+            "dz": dz_parsed,
+            "nx": nx_parsed,
+            "nz": nz_parsed,
+            "origin_x": 0.0,
+            "origin_z": 0.0
+        }
+    return seismic_data, metadata
+
+def map_coordinate_to_index(pos, spacing, origin, max_cells):
+    """
+    Convert a physical coordinate (in meters) to an exact integer cell index
+    using a rounded nearest-neighbor calculation.
+    
+    Parameters
+    ----------
+    pos : float or ndarray
+        Physical position(s) in meters.
+    spacing : float
+        Grid spacing (dx or dz) in meters.
+    origin : float
+        Origin coordinate in meters.
+    max_cells : int
+        Maximum number of cells (nx or nz).
+        
+    Returns
+    -------
+    int or ndarray
+        Nearest integer cell index/indices.
+    """
+    pos_arr = np.atleast_1d(pos)
+    max_physical = origin + (max_cells - 1) * spacing
+    if np.any(pos_arr < origin) or np.any(pos_arr > max_physical):
+        raise ValueError(
+            f"Physical position {pos} is out of bounds [{origin}, {max_physical}] "
+            f"for grid spacing {spacing} and origin {origin}."
+        )
+    indices = np.floor((pos_arr - origin) / spacing + 0.5).astype(int)
+    if np.isscalar(pos):
+        return int(indices[0])
+    return indices if len(indices) > 1 else int(indices[0])
+
 
 
