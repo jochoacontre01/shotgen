@@ -1,0 +1,26 @@
+# Simulation configuration template for generate_record.py
+
+# Grid parameters (nx, nz, dx, dz are inferred from the velocity model and metadata)
+meters_per_cell: 1.0
+float_type: "float32"
+
+# Cropping parameters
+# max_size specifies the maximum physical model size in meters [max_x_meters, max_z_meters]
+# Set to null or remove to keep the full velocity model size without slicing.
+max_size: [10000.0, 2000.0]
+
+# Simulation parameters
+n_sources: 5
+n_receivers: 24
+f0: 10.0
+src_origin: [0.0, 2.0]
+rec_origin: [0.0, 2.0]
+origin: [0.0, 0.0]
+group_offset: 100.0
+shot_offset: 200.0
+gather: "common shot"
+smooth: 5
+snr: 5.0
+fd_order: 8
+n_damping: 200
+engine: "pylops"
