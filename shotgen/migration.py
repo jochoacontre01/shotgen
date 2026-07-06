@@ -156,7 +156,7 @@ class ReverseTimeMigration:
         nbl: int = 40,
         smooth_sigma: float = 5.0,
         f0: float = None,
-        space_order: int = 4,
+        space_order: int = 8,
         time_order: int = 2,
         dtype=np.float32,
         **kwargs,
@@ -329,6 +329,7 @@ class ReverseTimeMigration:
             
             for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
                 self.geometry.src_positions[0, :] = self.sources[i, :]
+                self.geometry.src.coordinates.data[0, :] = self.sources[i, :]
                 
                 # Update receiver coordinates for this shot dynamically
                 current_recs = self.receivers[i] if self.receivers.ndim == 3 else self.receivers
@@ -361,6 +362,7 @@ class ReverseTimeMigration:
             
             for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
                 self.geometry.src_positions[0, :] = self.sources[i, :]
+                self.geometry.src.coordinates.data[0, :] = self.sources[i, :]
                 
                 true_d, _, _ = self.solver.forward(vp=self.model.vp)
                 smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
@@ -407,6 +409,7 @@ class ReverseTimeMigration:
         
         for i in tqdm(range(nshots), desc="source", total=nshots):
             self.geometry.src_positions[0, :] = self.sources[i, :]
+            self.geometry.src.coordinates.data[0, :] = self.sources[i, :]
             
             current_recs = self.receivers[i] if self.receivers.ndim == 3 else self.receivers
             self.geometry.rec.coordinates.data[:, :] = current_recs
@@ -449,7 +452,7 @@ class ReverseTimeMigration:
         self.residual_source = PointSource(name="residual", grid=model.grid, time_range=self.geometry.time_axis, coordinates=self.geometry.rec_positions)
         res_term = self.residual_source.inject(field=v.backward, expr=self.residual_source*dt**2/model.m)
         
-        image_update = Eq(image, image-u*v)
+        image_update = Eq(image, image+u*v)
     
         return Operator([stencil] + res_term + [image_update], subs=model.spacing_map)
 

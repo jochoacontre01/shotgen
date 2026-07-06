@@ -23,7 +23,7 @@ def main(cli=False, file=None):
         dataset_dir=shotpath,
         nbl=nbl,
         smooth_sigma=5.0,
-        space_order=4,
+        # space_order=4
     )
     
     dx_spacing, dz_spacing = rtm.spacing
@@ -31,9 +31,8 @@ def main(cli=False, file=None):
     # 5. Execute run method
     print("Running Reverse Time Migration...")
     migrated_image = rtm.run(save_wavefield=False)
-    print(migrated_image)
 
-    # 6. Post-process and Plot
+    # 6. Post-process and Plotttinh
     # Apply Laplace filter to the migrated image to remove low-frequency acquisition footprints.
     lap_image = laplace(migrated_image)
     
@@ -43,7 +42,6 @@ def main(cli=False, file=None):
     # np.save("rtm.npy", plotted_image)
     # Compute display extent in meters
     model = rtm.model
-    print(model.origin, model.shape, rtm.spacing, nbl)
     extent = [
         model.origin[0] * dx_spacing, 
         model.origin[0] + model.shape[0] * dx_spacing,
@@ -53,12 +51,12 @@ def main(cli=False, file=None):
     vmin = np.quantile(laplace(plotted_image), 0.10)
     vmax = np.quantile(laplace(plotted_image), 0.85)
     print("Plotting results...")
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(10, 5))
     im = plt.imshow(
         plotted_image.T,
         cmap="gray",
         extent=extent,
-        aspect="auto",
+        aspect="equal",
         vmin=vmin,
         vmax=vmax
     )

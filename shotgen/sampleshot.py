@@ -267,7 +267,7 @@ class ShotRecord:
         self.vel = model
         self._model_ready = True
         
-    def show_model(self, draw_recs=True, cli=False, **kwargs):
+    def show_model(self, draw_recs=True, cli=False, hq=False, **kwargs):
         """
         Plot the current velocity model with source and receiver positions.
 
@@ -300,6 +300,12 @@ class ShotRecord:
             plt.title("Velocity")
             plt.xlim(self.origin[0], self.origin[0] + self.nx * self.dx)
             plt.tight_layout()
+            if hq:
+                import pathlib
+                name = pathlib.Path(__file__).resolve().parents[1] / "examples/velmodel.png"
+                plt.savefig(name)
+                subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"])
+                # subprocess.run("rm img.png".split())
             if cli:
                 plt.savefig("img.png", dpi=100)
                 subprocess.run("timg img.png".split())
@@ -570,7 +576,7 @@ class ShotRecord:
                 
         print(f"Saved simulation files to folder {name}")
     
-    def show_shot(self, cmap="seismic", cli=False):
+    def show_shot(self, cmap="seismic", cli=False, hq=False):
         """
         Visualize all generated shot records side-by-side.
         """
@@ -605,6 +611,12 @@ class ShotRecord:
             fig.supxlabel("rec [m]")
             fig.supylabel("t [s]")
             # plt.subplots_adjust(wspace=0)
+            if hq:
+                import pathlib
+                name = pathlib.Path(__file__).resolve().parents[1] / "examples/shots.png"
+                plt.savefig(name)
+                subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"])
+                #subprocess.run("rm img.png".split())
             if cli:
                 plt.savefig("img.png")
                 subprocess.run("timg img.png".split())

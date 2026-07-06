@@ -6,6 +6,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--cli", action="store_true", help="Setup runtime for non-gui interface")
 parser.add_argument("-y", "--yes", action="store_true", help="Proceed with modeling after showing model geometry.")
+parser.add_argument("-H", "--high-quality", action="store_true",help="Saves and transfers the images to termux to display it in native Android system")
 args = parser.parse_args()
 
 #vp, metadata = load_marmousi()
@@ -16,6 +17,7 @@ vp, metadata = load_overthrust()
 print(vp.shape)
 dx = metadata["dx"]
 dz = metadata["dz"]
+vp = vp[:int(10000/dx), :int(2000/dz)]
 
 
 nx = vp.shape[0]
@@ -30,14 +32,14 @@ shot = ShotRecord(
     dz=dz,
     n_sources=10,
     n_receivers=24,
-    f0=20, # high frequency yields numerical instability
+    f0=10, # high frequency yields numerical instability
     # src_origin=(0,10),
     # rec_origin=(0,2),
     src_origin=(0.0,2.0),
     rec_origin=(0.0,2.0),
     origin=(0.0, 0.0),
-    group_offset=10.0, # offset between receivers
-    shot_offset=100.0, # offset between shots
+    group_offset=100.0, # offset between receivers
+    shot_offset=400.0, # offset between shots
     gather="common shot",
     smooth=5,
     snr=5,
@@ -58,7 +60,7 @@ shot.set_model(vp)
 
 # shot.set_receiver_position(x_pos, y_pos)
 
-shot.show_model(cmap="turbo", cli=args.cli)
+shot.show_model(cmap="turbo", cli=args.cli, hq=args.high_quality)
 
 if args.yes:
     start = perf_counter()
@@ -66,7 +68,7 @@ if args.yes:
     end = perf_counter()
 
     print(f"Simulation ended after {end-start};.6f seconds")
-    shot.show_shot(cmap="grey", cli=args.cli)
+    shot.show_shot(cmap="grey", cli=args.cli, hq=args.high_quality)
 
     save = input("Save simulation? (y/n): ")
     if save.lower() == "y":
