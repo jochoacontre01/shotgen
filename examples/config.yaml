@@ -15,12 +15,12 @@ n_receivers: 48
 f0: 10.0
 src_origin: [0.0, 2.0]
 rec_origin: [0.0, 2.0]
-origin: [2000.0, 0.0]
-group_offset: 50.0
-shot_offset: 50.0
+origin: [0.0, 0.0]
+group_offset: 200.0
+shot_offset: 100.0
 gather: "common shot"
 smooth: 5
 snr: 5.0
-fd_order: 8
+fd_order: 30
 n_damping: 200
 engine: "pylops"
