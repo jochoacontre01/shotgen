@@ -136,6 +136,7 @@ def main():
     parser.add_argument("-c", "--cli", action="store_true", help="Setup runtime for non-gui interface")
     parser.add_argument("-y", "--yes", action="store_true", help="Proceed with modeling after showing model geometry.")
     parser.add_argument("-H", "--high-quality", action="store_true", help="Saves and transfers the images to termux to display it in native Android system")
+    parser.add_argument("-n", "--no-show", action="store_true", help="Do not display any figure during the simulation.")
     
     # Config file
     parser.add_argument("--config", type=str, default=None, help="Path to a YAML configuration file.")
@@ -258,8 +259,9 @@ def main():
     print(sr_args)
     shot = ShotRecord(**sr_args)
     shot.set_model(vp)
-
-    shot.show_model(cmap="turbo", cli=args.cli, hq=args.high_quality)
+    
+    if not args.no_show:
+        shot.show_model(cmap="turbo", cli=args.cli, hq=args.high_quality)
 
     if args.yes:
         start = perf_counter()
@@ -267,7 +269,8 @@ def main():
         end = perf_counter()
 
         print(f"Simulation ended after {end-start:.6f} seconds")
-        shot.show_shot(cmap="grey", cli=args.cli, hq=args.high_quality)
+        if not args.no_show:
+            shot.show_shot(cmap="grey", cli=args.cli, hq=args.high_quality)
 
         save = input("Save simulation? (y/n): ")
         if save.lower() == "y":

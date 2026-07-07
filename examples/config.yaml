@@ -11,13 +11,13 @@ max_size: [10000.0, 2000.0]
 
 # Simulation parameters
 n_sources: 5
-n_receivers: 24
+n_receivers: 48
 f0: 10.0
 src_origin: [0.0, 2.0]
 rec_origin: [0.0, 2.0]
-origin: [0.0, 0.0]
-group_offset: 100.0
-shot_offset: 200.0
+origin: [2000.0, 0.0]
+group_offset: 50.0
+shot_offset: 50.0
 gather: "common shot"
 smooth: 5
 snr: 5.0
