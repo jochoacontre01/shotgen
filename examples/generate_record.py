@@ -65,6 +65,7 @@ PARAM_TYPES = {
     "fd_order": int,
     "n_damping": int,
     "engine": str,
+    "ntime": float,
 }
 
 
@@ -148,7 +149,7 @@ def main():
     parser.add_argument("--n-sources", "--n_sources", dest="n_sources", type=int, default=argparse.SUPPRESS, help="Total number of sources (int)")
     parser.add_argument("--n-receivers", "--n_receivers", dest="n_receivers", type=int, default=argparse.SUPPRESS, help="Total number of receivers (int)")
     parser.add_argument("--f0", type=float, default=argparse.SUPPRESS, help="Central frequency of the wavelet in Hz (float)")
-    parser.add_argument("--ntime", "--ntime", dest="ntime", type=float, default=argparse.SUPPRESS, help="Total simulation duration in miliseconds (float)")
+    parser.add_argument("--ntime", dest="ntime", type=float, default=argparse.SUPPRESS, help="Total simulation duration in miliseconds (float)")
     parser.add_argument("--src-origin", "--src_origin", dest="src_origin", type=parse_tuple, default=argparse.SUPPRESS, help="First point of the first source as tuple (e.g. '(0,2)')")
     parser.add_argument("--rec-origin", "--rec_origin", dest="rec_origin", type=parse_tuple, default=argparse.SUPPRESS, help="First point of the first receiver as tuple (e.g. '(0,2)')")
     parser.add_argument("--origin", type=parse_tuple, default=argparse.SUPPRESS, help="Grid physical origin coordinate as tuple (e.g. '(0,0)')")
