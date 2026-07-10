@@ -244,7 +244,7 @@ class ReverseTimeMigration:
             self.sources = sources
             self.receivers = receivers
             # Transpose to (n_sources, nt, n_receivers) and convert to float32
-            self.shots = np.transpose(shots, (0, 2, 1)).astype(np.float32)
+            self.shots = np.transpose(shots, (0, 2, 1)).astype(self.dtype)
             
             self._create_geometry()
             
@@ -262,7 +262,7 @@ class ReverseTimeMigration:
                 else:
                     self.shots = self.shots[:, :nt_target, :]
         else:
-            source_locations = np.empty((self.n_sources, 2), dtype=np.float32)
+            source_locations = np.empty((self.n_sources, 2), dtype=self.dtype)
             source_locations[:, 0] = self.origin[0] + np.linspace(0, self.model.domain_size[0], num=self.n_sources)
             source_locations[:, 1] = self.origin[1] + 0.
             self.sources = source_locations
@@ -285,7 +285,7 @@ class ReverseTimeMigration:
             space_order=self.space_order,
             nbl=self.nbl,
             bcs="damp",
-            dtype=np.float32,
+            dtype=self.dtype,
             grid=None
         )
         
@@ -297,7 +297,7 @@ class ReverseTimeMigration:
             space_order=self.space_order,
             nbl=self.nbl,
             bcs="damp",
-            dtype=np.float32,
+            dtype=self.dtype,
             grid=None
         )
     
@@ -395,7 +395,7 @@ class ReverseTimeMigration:
         nshots = shot_records.shape[0]
         
         # Cast to float32 to avoid warnings
-        shot_records = shot_records.astype(np.float32)
+        shot_records = shot_records.astype(self.dtype)
         
         # Align shot_records time dimension with self.geometry.nt
         nt_target = self.geometry.nt
