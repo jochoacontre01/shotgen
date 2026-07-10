@@ -6,7 +6,7 @@ import numpy as np
 import yaml
 import warnings
 
-from shotgen.sampleshot import ShotRecord, load_overthrust, load_bpsalt
+from shotgen.sampleshot import ShotRecord, load_overthrust, load_bpsalt, load_marmousi
 
 def parse_tuple(value):
     if value is None:
@@ -49,6 +49,7 @@ def parse_tuple(value):
 PARAM_TYPES = {
     "meters_per_cell": float,
     "float_type": None,  # Special validation
+    "decimate": int,
     "n_sources": int,
     "n_receivers": int,
     "f0": float,
@@ -65,6 +66,7 @@ PARAM_TYPES = {
     "n_damping": int,
     "engine": str,
 }
+
 
 def validate_type(name, val):
     if val is None:
@@ -134,9 +136,10 @@ def main():
     
     # Execution / workflow control flags
     parser.add_argument("-c", "--cli", action="store_true", help="Setup runtime for non-gui interface")
-    parser.add_argument("-y", "--yes", action="store_true", help="Proceed with modeling after showing model geometry.")
+    parser.add_argument("-r", "--run", action="store_true", help="Proceed with modeling after showing model geometry.")
     parser.add_argument("-H", "--high-quality", action="store_true", help="Saves and transfers the images to termux to display it in native Android system")
     parser.add_argument("-n", "--no-show", action="store_true", help="Do not display any figure during the simulation.")
+    parser.add_argument("-y", "--yes", action="store_true", help="Save simulation files to disk")
     
     # Config file
     parser.add_argument("--config", type=str, default=None, help="Path to a YAML configuration file.")
@@ -145,6 +148,7 @@ def main():
     parser.add_argument("--n-sources", "--n_sources", dest="n_sources", type=int, default=argparse.SUPPRESS, help="Total number of sources (int)")
     parser.add_argument("--n-receivers", "--n_receivers", dest="n_receivers", type=int, default=argparse.SUPPRESS, help="Total number of receivers (int)")
     parser.add_argument("--f0", type=float, default=argparse.SUPPRESS, help="Central frequency of the wavelet in Hz (float)")
+    parser.add_argument("--ntime", "--ntime", dest="ntime", type=float, default=argparse.SUPPRESS, help="Total simulation duration in miliseconds (float)")
     parser.add_argument("--src-origin", "--src_origin", dest="src_origin", type=parse_tuple, default=argparse.SUPPRESS, help="First point of the first source as tuple (e.g. '(0,2)')")
     parser.add_argument("--rec-origin", "--rec_origin", dest="rec_origin", type=parse_tuple, default=argparse.SUPPRESS, help="First point of the first receiver as tuple (e.g. '(0,2)')")
     parser.add_argument("--origin", type=parse_tuple, default=argparse.SUPPRESS, help="Grid physical origin coordinate as tuple (e.g. '(0,0)')")
@@ -159,8 +163,10 @@ def main():
     parser.add_argument("--engine", type=str, default=argparse.SUPPRESS, help="Born modeling computation engine, e.g., 'pylops' (str)")
     
     # Maintain support for existing other arguments
+    parser.add_argument("--decimate", type=int, default=argparse.SUPPRESS, help="Decimation factor for the velocity model (int)")
     parser.add_argument("--meters-per-cell", "--meters_per_cell", dest="meters_per_cell", type=float, default=argparse.SUPPRESS, help="Grid physical meters per cell conversion scale (float)")
     parser.add_argument("--float-type", "--float_type", dest="float_type", default=argparse.SUPPRESS, help="Numeric float type (e.g. 'float32' or 'float64')")
+
 
     args = parser.parse_args()
 
@@ -203,7 +209,7 @@ def main():
             raise TypeError(f"Validation error for parameter '{k}': {e}")
 
     # Load overthrust dataset
-    vp, metadata = load_overthrust()
+    vp, metadata = load_marmousi()
     
     # dx and dz must be processed directly from the metadata (cannot be modified by the user)
     dx = metadata["dx"]
@@ -231,9 +237,19 @@ def main():
         if x_end_clamp > x_start_clamp and z_end_clamp > z_start_clamp:
             vp = vp[x_start_clamp:x_end_clamp, z_start_clamp:z_end_clamp]
 
+    # Decimate model if decimate is specified (defaults to 1)
+    decimate = validated_params.get("decimate", 1)
+    if decimate < 1:
+        raise ValueError("Decimation factor must be a positive integer.")
+    if decimate > 1:
+        vp = vp[::decimate, ::decimate]
+        dx = dx * decimate
+        dz = dz * decimate
+
     # nx and nz must be inferred directly from the resulting vp array
     nx = vp.shape[0]
     nz = vp.shape[1]
+
 
     # Required positional/keyword args for ShotRecord
     sr_args = {
@@ -263,20 +279,24 @@ def main():
     if not args.no_show:
         shot.show_model(cmap="turbo", cli=args.cli, hq=args.high_quality)
 
-    if args.yes:
+    if args.run:
         start = perf_counter()
-        data = shot.run(3000)
+        data = shot.run(validated_params.get("ntime", 1000.0))
         end = perf_counter()
 
         print(f"Simulation ended after {end-start:.6f} seconds")
         if not args.no_show:
             shot.show_shot(cmap="grey", cli=args.cli, hq=args.high_quality)
+        
+        snr_val = f"{shot.snr:.1f}" if shot.snr is not None else "None"
+        filename = f"data/{shot.gather.replace(' ', '')}-shot_{shot.nx}nx_{shot.nz}nz_{shot.dx}dx_{shot.dz}dz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{snr_val}snr"
 
-        save = input("Save simulation? (y/n): ")
-        if save.lower() == "y":
-            snr_val = f"{shot.snr:.1f}" if shot.snr is not None else "None"
-            filename = f"data/{shot.gather.replace(' ', '')}-shot_{shot.nx}nx_{shot.nz}nz_{shot.dx}dx_{shot.dz}dz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{snr_val}snr"
+        if args.yes:
             shot.save_shot(filename)
+        else:
+            save = input("Save simulation? (y/n): ")
+            if save.lower() == "y":
+                shot.save_shot(filename)
 
 if __name__ == "__main__":
     main()
