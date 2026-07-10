@@ -6,7 +6,6 @@ diffutils
 gcc
 gedit
 git
-glow
 gnupg
 gnupg2
 htop
