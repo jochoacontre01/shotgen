@@ -68,6 +68,7 @@ dependencies = [
     "scikit-fmm",
     "seisplot",
     "tqdm",
+    "PyYAML",
 ]
 
 # This is configuration specific to the `setuptools` build backend.
