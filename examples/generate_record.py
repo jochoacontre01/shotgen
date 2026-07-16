@@ -70,6 +70,11 @@ PARAM_TYPES = {
 
 
 def validate_type(name, val):
+    if isinstance(val, str):
+        val_clean = val.strip().lower()
+        if val_clean in ("none", "null"):
+            val = None
+
     if val is None:
         if name in ("snr", "f0", "src_origin", "rec_origin", "origin", "float_type", "max_size"):
             return None
