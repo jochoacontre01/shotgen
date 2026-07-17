@@ -178,6 +178,9 @@ class ShotRecord:
         self._model_ready = False
         self.vel = None
         self.smooth = smooth
+        self.v0 = None
+        self.us = None
+        self.tn = None
         self.origin = origin
         self.snr = snr
         
@@ -503,6 +506,7 @@ class ShotRecord:
             If no velocity model has been initialized before running.
         """
         if self._model_ready:
+            self.tn = ms
             self.v0 = gaussian_filter(self.vel, sigma=self.smooth)
             
             if self.engine.lower() == "pylops":

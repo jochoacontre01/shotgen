@@ -67,6 +67,7 @@ dependencies = [
     "deepwave",
     "scikit-fmm",
     "seisplot",
+    "cmocean",
     "tqdm",
     "PyYAML",
 ]

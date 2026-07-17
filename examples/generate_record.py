@@ -7,6 +7,7 @@ import yaml
 import warnings
 
 from shotgen.sampleshot import ShotRecord, load_overthrust, load_bpsalt, load_marmousi
+from shotgen.io import generate_video
 
 def parse_tuple(value):
     if value is None:
@@ -146,6 +147,7 @@ def main():
     parser.add_argument("-H", "--high-quality", action="store_true", help="Saves and transfers the images to termux to display it in native Android system")
     parser.add_argument("-n", "--no-show", action="store_true", help="Do not display any figure during the simulation.")
     parser.add_argument("-y", "--yes", action="store_true", help="Save simulation files to disk")
+    parser.add_argument("-v", "--video", type=int, default=None, help="Save wavefield video with frame decimation factor (save_each).")
     
     # Config file
     parser.add_argument("--config", type=str, default=None, help="Path to a YAML configuration file.")
@@ -279,6 +281,8 @@ def main():
 
     print(f"Instantiating ShotRecord with size: ({sr_args['nx']}, {sr_args['nz']})")
     print(sr_args)
+    if getattr(args, "video", None) is not None:
+        sr_args["engine"] = "devito"
     shot = ShotRecord(**sr_args)
     shot.set_model(vp)
     
@@ -287,10 +291,17 @@ def main():
 
     if args.run:
         start = perf_counter()
-        data = shot.run(validated_params.get("ntime", 1000.0))
+        run_kwargs = {}
+        if getattr(args, "video", None) is not None:
+            run_kwargs["save_wavefield"] = True
+            run_kwargs["save_each"] = args.video
+        data = shot.run(validated_params.get("ntime", 1000.0), **run_kwargs)
         end = perf_counter()
 
         print(f"Simulation ended after {end-start:.6f} seconds")
+        
+        if getattr(args, "video", None) is not None:
+            generate_video(shot)
         if not args.no_show:
             shot.show_shot(cmap="grey", cli=args.cli, hq=args.high_quality)
         
