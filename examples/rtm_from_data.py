@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import cmocean
 from pathlib import Path
 from scipy.ndimage import laplace
 from shotgen.sampleshot import LoadShotRecord
@@ -48,17 +49,20 @@ def main(cli=False, file=None):
         model.origin[1] + model.shape[1] * dz_spacing, 
         model.origin[1] * dz_spacing
     ]
+    from matplotlib.colors import TwoSlopeNorm
     vmin = np.quantile(laplace(plotted_image), 0.10)
     vmax = np.quantile(laplace(plotted_image), 0.85)
+    vmin = min(vmin, -1e-10)
+    vmax = max(vmax, 1e-10)
+    norm = TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax)
     print("Plotting results...")
     plt.figure(figsize=(10, 5))
     im = plt.imshow(
         plotted_image.T,
-        cmap="gray",
+        cmap=cmocean.cm.balance,
         extent=extent,
         aspect="equal",
-        vmin=vmin,
-        vmax=vmax
+        norm=norm
     )
     plt.colorbar(im, label="Amplitude", shrink=0.75)
     plt.xlabel("Distance (m)")

@@ -2,6 +2,7 @@ from pathlib import Path
 from shotgen.sampleshot import LoadShotRecord
 from shotgen.migration import KirchhoffMigration
 import matplotlib.pyplot as plt
+import cmocean
 from scipy.ndimage import laplace
 import numpy as np
 import argparse
@@ -27,6 +28,8 @@ migrator = KirchhoffMigration(
 
 image = migrator.run()
 
+from matplotlib.colors import TwoSlopeNorm
+
 model = migrator.model
 plt.figure(figsize=(10, 5))
 extent = [
@@ -37,7 +40,10 @@ extent = [
 ]
 vmin = np.quantile(laplace(image), 0.10)
 vmax = np.quantile(laplace(image), 0.85)
-im = plt.imshow(laplace(image.T), cmap="gray", extent=extent, vmin=vmin, vmax=vmax)
+vmin = min(vmin, -1e-10)
+vmax = max(vmax, 1e-10)
+norm = TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax)
+im = plt.imshow(laplace(image.T), cmap=cmocean.cm.balance, extent=extent, norm=norm)
 plt.colorbar(im, label="Amplitude", shrink=0.75)
 plt.xlabel("Distance (m)")
 plt.ylabel("Depth (m)")
