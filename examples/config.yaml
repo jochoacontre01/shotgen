@@ -3,7 +3,7 @@
 # Grid parameters (nx, nz, dx, dz are inferred from the velocity model and metadata)
 meters_per_cell: 1.0
 float_type: "float32"
-decimate: 10
+decimate: 5
 
 
 # Cropping parameters
@@ -16,8 +16,8 @@ n_sources: 15
 n_receivers: 48
 ntime: 10000.0
 f0: 10.0
-src_origin: [0.0, 2.0]
-rec_origin: [0.0, 2.0]
+src_origin: [3000.0, 2.0]
+rec_origin: [3000.0, 2.0]
 origin: [25000.0, 0.0]
 group_offset: 100.0
 shot_offset: 500.0
