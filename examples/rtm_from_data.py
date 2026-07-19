@@ -76,7 +76,7 @@ def main(cli=False, file=None):
     # print(f"Plot saved to: {output_plot_path}")
     if cli:
         plt.savefig("img.png")
-        subprocess.run("timg img.png".split())
+        subprocess.run("chafa -w 9 img.png".split())
         time.sleep(0.5)
         subprocess.run("rm img.png".split())
     else:

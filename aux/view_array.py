@@ -14,7 +14,7 @@ plt.imshow(data.T, aspect="auto", cmap="gray")
 plt.colorbar()
 if args.cli:
     plt.savefig("img.png")
-    subprocess.run("timg img.png".split())
+    subprocess.run("chafa -w 9 img.png".split())
     subprocess.run("rm img.png".split())
 else:
     plt.show()
