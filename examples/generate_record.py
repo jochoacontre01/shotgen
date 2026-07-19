@@ -9,6 +9,10 @@ import warnings
 from shotgen.sampleshot import ShotRecord, load_overthrust, load_bpsalt, load_marmousi
 from shotgen.io import generate_video
 
+import scienceplots
+import matplotlib.pyplot as plt
+plt.style.use(["science", "no-latex"])
+
 def parse_tuple(value):
     if value is None:
         return None
@@ -306,7 +310,7 @@ def main():
             shot.show_shot(cmap="grey", cli=args.cli, hq=args.high_quality)
         
         snr_val = f"{shot.snr:.1f}" if shot.snr is not None else "None"
-        filename = f"data/{shot.gather.replace(' ', '')}-shot_{shot.nx}nx_{shot.nz}nz_{shot.dx}dx_{shot.dz}dz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{snr_val}snr"
+        filename = f"data/{shot.gather.replace(' ', '')}-shot_{shot.nx}nx_{shot.nz}nz_{shot.tn}ms_{shot.dx}dx_{shot.dz}dz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{snr_val}snr"
 
         if args.yes:
             shot.save_shot(filename)
