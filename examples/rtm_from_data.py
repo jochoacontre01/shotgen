@@ -50,10 +50,12 @@ def main(cli=False, file=None):
         model.origin[1] * dz_spacing
     ]
     from matplotlib.colors import TwoSlopeNorm
-    vmin = np.quantile(laplace(plotted_image), 0.10)
-    vmax = np.quantile(laplace(plotted_image), 0.85)
-    vmin = min(vmin, -1e-10)
-    vmax = max(vmax, 1e-10)
+    # vmin = np.quantile(laplace(plotted_image), 0.10)
+    # vmax = np.quantile(laplace(plotted_image), 0.85)
+    # vmin = min(vmin, -1e-10)
+    # vmax = max(vmax, 1e-10)
+    vmin = np.min(lap_image)
+    vmax = np.max(lap_image)
     norm = TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax)
     print("Plotting results...")
     plt.figure(figsize=(10, 5))
@@ -61,7 +63,7 @@ def main(cli=False, file=None):
         plotted_image.T,
         cmap=cmocean.cm.balance,
         extent=extent,
-        aspect="equal",
+        aspect="auto",
         norm=norm
     )
     plt.colorbar(im, label="Amplitude", shrink=0.75)
