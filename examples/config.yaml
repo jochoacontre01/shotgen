@@ -9,18 +9,18 @@ decimate: 5
 # Cropping parameters
 # max_size specifies the maximum physical model size in meters [max_x_meters, max_z_meters]
 # Set to null or remove to keep the full velocity model size without slicing.
-max_size: [25000.0, 8000.0]
+max_size: [15000.0, 3500.0]
 
 # Simulation parameters
 n_sources: 15
 n_receivers: 48
 ntime: 10000.0
 f0: 10.0
-src_origin: [3000.0, 2.0]
-rec_origin: [3000.0, 2.0]
-origin: [25000.0, 0.0]
+src_origin: [0.0, 2.0]
+rec_origin: [0.0, 2.0]
+origin: [0.0, 0.0]
 group_offset: 100.0
-shot_offset: 500.0
+shot_offset: 600.0
 gather: "common shot"
 smooth: 5
 snr: None

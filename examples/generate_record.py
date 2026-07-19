@@ -217,7 +217,7 @@ def main():
             raise TypeError(f"Validation error for parameter '{k}': {e}")
 
     # Load overthrust dataset
-    vp, metadata = load_bpsalt()
+    vp, metadata = load_marmousi()
     
     # dx and dz must be processed directly from the metadata (cannot be modified by the user)
     dx = metadata["dx"]
