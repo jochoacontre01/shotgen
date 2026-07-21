@@ -402,50 +402,24 @@ class ShotRecord:
     def _execute_pylops(self, ms):
         dv = self.vel**(-2) - self.v0**(-2)
         
-        if self.gather == "common shot":
-            # Define a helper function to process a single shot
-            def _process_single_shot(si, s):
-                Aop = pylops.waveeqprocessing.AcousticWave2D(
-                    shape=(self.nx, self.nz),
-                    origin=self.origin,
-                    spacing=(self.dx, self.dz),
-                    vp=self.v0,
-                    src_x=np.array([s[0]], dtype=float),
-                    src_z=np.array([s[1]], dtype=float),
-                    rec_x=self.recs[si][:, 0],
-                    rec_z=self.recs[si][:, 1],
-                    t0=0.0,
-                    tn=ms,
-                    src_type="Ricker",
-                    space_order=self.fd_order,
-                    nbl=self.n_damping,
-                    f0=self.f0,
-                    dtype=str(np.dtype(self.float_type))
-                )
-                return (Aop @ dv)[0]
+        def _get_rec_coords(si):
+            if self.gather == "common shot":
+                return self.recs[si][:, 0], self.recs[si][:, 1]
+            else:
+                return self.recs[:, 0], self.recs[:, 1]
 
-            # Run the simulation in parallel using all available cores (n_jobs=-1)
-            with tqdm_joblib(tqdm(desc="Source", total=self.n_sources)):
-                run = Parallel(n_jobs=-1)(
-                    delayed(_process_single_shot)(si, s) 
-                    for si, s in enumerate(self.sources)
-                )
-            run = np.array(run, dtype=self.float_type)
-            self.shot_run = run
-            
-            # Re-instantiate the last operator to populate metadata (self.aop, self.src, self.dt)
-            # This is necessary because the parallel workers do not update the main object instance
-            s = self.sources[-1]
-            si = self.n_sources - 1
-            self.aop = pylops.waveeqprocessing.AcousticWave2D(
+        # Define a helper function to process a single shot
+        def _process_single_shot(si, s):
+            rec_x, rec_z = _get_rec_coords(si)
+            Aop = pylops.waveeqprocessing.AcousticWave2D(
                 shape=(self.nx, self.nz),
                 origin=self.origin,
                 spacing=(self.dx, self.dz),
                 vp=self.v0,
-                src_x=np.array([s[0]], dtype=self.float_type),
-                src_z=np.array([s[1]], dtype=self.float_type),
-                rec_x=self.recs[si][:, 0],
-                rec_z=self.recs[si][:, 1],
+                src_x=np.array([s[0]], dtype=float),
+                src_z=np.array([s[1]], dtype=float),
+                rec_x=rec_x,
+                rec_z=rec_z,
                 t0=0.0,
                 tn=ms,
                 src_type="Ricker",
@@ -454,33 +428,41 @@ class ShotRecord:
                 f0=self.f0,
                 dtype=str(np.dtype(self.float_type))
             )
-            self.src = self.aop.geometry.src.data[:, 0]
-            self.dt = self.aop.geometry.dt
-                
-        elif self.gather == "common midpoint":
-            Aop = pylops.waveeqprocessing.AcousticWave2D(
-                    shape=(self.nx, self.nz),
-                    origin=self.origin,
-                    spacing=(self.dx, self.dz),
-                    vp=self.v0,
-                    src_x=self.sources[:, 0],
-                    src_z=self.sources[:, 1],
-                    rec_x=self.recs[:, 0],
-                    rec_z=self.recs[:, 1],
-                    t0=0.0,
-                    tn=ms,
-                    src_type="Ricker",
-                    space_order=self.fd_order,
-                    nbl=self.n_damping,
-                    f0=self.f0,
-                    dtype=str(np.dtype(self.float_type))
-                )
-            self.aop = Aop
-            self.dt = self.aop.geometry.dt
-            
-            run = Aop @ dv
-            self.shot_run = run
-            self.src = self.aop.geometry.src.data[:, 0]
+            return (Aop @ dv)[0]
+
+        # Run the simulation in parallel using all available cores (n_jobs=-1)
+        with tqdm_joblib(tqdm(desc="Source", total=self.n_sources)):
+            run = Parallel(n_jobs=-1)(
+                delayed(_process_single_shot)(si, s) 
+                for si, s in enumerate(self.sources)
+            )
+        run = np.array(run, dtype=self.float_type)
+        self.shot_run = run
+        
+        # Re-instantiate the last operator to populate metadata (self.aop, self.src, self.dt)
+        # This is necessary because the parallel workers do not update the main object instance
+        s = self.sources[-1]
+        si = self.n_sources - 1
+        rec_x, rec_z = _get_rec_coords(si)
+        self.aop = pylops.waveeqprocessing.AcousticWave2D(
+            shape=(self.nx, self.nz),
+            origin=self.origin,
+            spacing=(self.dx, self.dz),
+            vp=self.v0,
+            src_x=np.array([s[0]], dtype=self.float_type),
+            src_z=np.array([s[1]], dtype=self.float_type),
+            rec_x=rec_x,
+            rec_z=rec_z,
+            t0=0.0,
+            tn=ms,
+            src_type="Ricker",
+            space_order=self.fd_order,
+            nbl=self.n_damping,
+            f0=self.f0,
+            dtype=str(np.dtype(self.float_type))
+        )
+        self.src = self.aop.geometry.src.data[:, 0]
+        self.dt = self.aop.geometry.dt
             
     def run(self, ms=500, gain=None, **devito_kwargs):
         """
