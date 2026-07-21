@@ -3,13 +3,13 @@
 # Grid parameters (nx, nz, dx, dz are inferred from the velocity model and metadata)
 meters_per_cell: 1.0
 float_type: "float32"
-decimate: 30
+decimate: 1
 
 
 # Cropping parameters
 # max_size specifies the maximum physical model size in meters [max_x_meters, max_z_meters]
 # Set to null or remove to keep the full velocity model size without slicing.
-max_size: [15000.0, 3500.0]
+max_size: None #[15000.0, 3500.0]
 
 # Simulation parameters
 n_sources: 10
