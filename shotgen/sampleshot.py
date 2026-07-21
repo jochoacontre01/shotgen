@@ -7,6 +7,8 @@ from scipy.ndimage import gaussian_filter
 import pylops
 import h5py
 import os
+import shutil
+import ctypes
 from examples.seismic import AcquisitionGeometry, Model
 from examples.seismic.acoustic import AcousticWaveSolver
 from devito import configuration
@@ -20,6 +22,114 @@ import contextlib
 import joblib
 
 configuration["log-level"] = "WARNING"
+
+
+def detect_device():
+    """
+    Detect whether CUDA GPU hardware and a suitable CUDA environment are available.
+
+    Returns
+    -------
+    str
+        'cuda' if CUDA GPU acceleration is available, otherwise 'cpu'.
+    """
+    # 1. Check PyTorch CUDA availability if PyTorch is installed
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+
+    # 2. Check system nvidia-smi command and CUDA runtime/compiler presence
+    if shutil.which("nvidia-smi"):
+        try:
+            res = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            if res.returncode == 0:
+                if shutil.which("nvcc") or shutil.which("nvc") or shutil.which("nvc++") or _check_cuda_lib():
+                    return "cuda"
+        except Exception:
+            pass
+
+    # 3. Check shared CUDA runtime library and C/C++ compiler availability
+    if _check_cuda_lib() and (shutil.which("nvcc") or shutil.which("nvc") or shutil.which("nvc++")):
+        return "cuda"
+
+    return "cpu"
+
+
+def _check_cuda_lib():
+    """Helper to check if libcuda runtime library can be loaded via ctypes."""
+    for libname in ["libcuda.so", "libcuda.dylib", "nvcuda.dll", "libcudart.so"]:
+        try:
+            ctypes.CDLL(libname)
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def configure_devito_device(device="auto", platform=None, compiler=None, language=None):
+    """
+    Configures Devito environment variables and runtime settings for CUDA or CPU.
+
+    Parameters
+    ----------
+    device : str, optional
+        Device to configure: 'auto', 'cuda', or 'cpu'.
+    platform : str, optional
+        Devito platform override (e.g. 'nvidiaX', 'volta', 'ampere', 'intel64').
+    compiler : str, optional
+        Devito compiler override (e.g. 'cuda', 'nvc', 'custom', 'gcc').
+    language : str, optional
+        Devito code generation language override (e.g. 'cuda', 'openacc', 'C').
+
+    Returns
+    -------
+    str
+        The configured device string ('cuda' or 'cpu').
+    """
+    if device == "auto" or device is None:
+        device = detect_device()
+
+    device = device.lower()
+
+    if device in ("cuda", "gpu"):
+        target_platform = platform if platform else "nvidiaX"
+        target_compiler = compiler if compiler else "cuda"
+        target_language = language if language else "cuda"
+
+        os.environ["DEVITO_PLATFORM"] = target_platform
+        os.environ["DEVITO_COMPILER"] = target_compiler
+        os.environ["DEVITO_LANGUAGE"] = target_language
+
+        try:
+            from devito import configuration
+            configuration["platform"] = target_platform
+            configuration["compiler"] = target_compiler
+            configuration["language"] = target_language
+        except Exception as e:
+            warnings.warn(f"Failed to set Devito GPU configuration: {e}")
+        device = "cuda"
+    else:
+        target_platform = platform if platform else "intel64"
+        target_compiler = compiler if compiler else "custom"
+        target_language = language if language else "C"
+
+        os.environ["DEVITO_PLATFORM"] = target_platform
+        os.environ["DEVITO_COMPILER"] = target_compiler
+        os.environ["DEVITO_LANGUAGE"] = target_language
+
+        try:
+            from devito import configuration
+            configuration["platform"] = target_platform
+            configuration["compiler"] = target_compiler
+            configuration["language"] = target_language
+        except Exception as e:
+            warnings.warn(f"Failed to set Devito CPU configuration: {e}")
+        device = "cpu"
+
+    return device
 
 
 @contextlib.contextmanager
@@ -37,6 +147,7 @@ def tqdm_joblib(tqdm_object):
     finally:
         joblib.parallel.BatchCompletionCallBack = old_batch_callback
         tqdm_object.close()
+
 
 
 class ShotRecord:
@@ -120,7 +231,8 @@ class ShotRecord:
         smooth=5,
         snr=None,
         engine="pylops",
-        float_type=np.float32
+        float_type=np.float32,
+        device="auto"
     ):
         """
         Initialize the ShotRecord with grid dimensions and survey geometry.
@@ -151,9 +263,29 @@ class ShotRecord:
             Type of shot gather. Can be 'common midpoint', 'common shot'.
         snr : float, optional
             Signal-to-noise ratio. Noise is added per-trace such that RMS(trace)/snr = std(noise). If None, no noise is added.
+        device : str, optional
+            Computation target device: 'auto' (detect CPU or CUDA GPU), 'cpu', or 'cuda'. Default is 'auto'.
         """
         self.engine = engine
         self.float_type = float_type
+        
+        # Device detection and setup
+        if device == "auto" or device is None:
+            self.device = detect_device()
+        elif device.lower() in ("cuda", "gpu"):
+            detected = detect_device()
+            if detected != "cuda":
+                warnings.warn(
+                    "device='cuda' was explicitly requested, but CUDA hardware or compiler was not detected. Devito may fail or fall back.",
+                    category=UserWarning
+                )
+            self.device = "cuda"
+        elif device.lower() == "cpu":
+            self.device = "cpu"
+        else:
+            raise ValueError(f"Invalid device '{device}'. Expected 'auto', 'cpu', or 'cuda'.")
+
+        configure_devito_device(self.device)
         
         self.nx = nx 
         self.nz = nz 
@@ -430,9 +562,14 @@ class ShotRecord:
             )
             return (Aop @ dv)[0]
 
-        # Run the simulation in parallel using all available cores (n_jobs=-1)
+        # Determine number of parallel jobs for joblib based on device:
+        # GPU execution performs best with single process (n_jobs=1) to prevent CUDA context thrashing,
+        # whereas CPU execution benefits from multi-core process parallelism (n_jobs=-1).
+        n_jobs = 1 if self.device == "cuda" else -1
+
+        # Run the simulation using joblib
         with tqdm_joblib(tqdm(desc="Source", total=self.n_sources)):
-            run = Parallel(n_jobs=-1)(
+            run = Parallel(n_jobs=n_jobs)(
                 delayed(_process_single_shot)(si, s) 
                 for si, s in enumerate(self.sources)
             )
@@ -491,6 +628,10 @@ class ShotRecord:
             self.tn = ms
             self.v0 = gaussian_filter(self.vel, sigma=self.smooth)
             
+            # Ensure Devito environment variables & runtime configuration match target device
+            configure_devito_device(self.device)
+            print(f"[ShotRecord] Running wave simulation on device: {self.device.upper()} (Engine: {self.engine})")
+
             if self.engine.lower() == "pylops":
                 self._execute_pylops(ms)
                 

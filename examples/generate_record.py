@@ -173,6 +173,7 @@ def main():
     parser.add_argument("--fd-order", "--fd_order", dest="fd_order", type=int, default=argparse.SUPPRESS, help="Order of the Finite Differences equation (int)")
     parser.add_argument("--n-damping", "--n_damping", dest="n_damping", type=int, default=argparse.SUPPRESS, help="Number of cells in the damping border (int)")
     parser.add_argument("--engine", type=str, default=argparse.SUPPRESS, help="Born modeling computation engine, e.g., 'pylops' (str)")
+    parser.add_argument("--device", type=str, default=argparse.SUPPRESS, help="Target device for wave simulation: 'auto', 'cpu', or 'cuda' (str)")
     
     # Maintain support for existing other arguments
     parser.add_argument("--decimate", type=int, default=argparse.SUPPRESS, help="Decimation factor for the velocity model (int)")
@@ -277,7 +278,7 @@ def main():
     optional_keys = [
         "f0", "src_origin", "rec_origin", "origin", "group_offset",
         "shot_offset", "gather", "smooth", "snr", "fd_order", "n_damping",
-        "engine", "meters_per_cell", "float_type"
+        "engine", "meters_per_cell", "float_type", "device"
     ]
     for key in optional_keys:
         if key in validated_params:
