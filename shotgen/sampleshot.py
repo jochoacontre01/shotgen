@@ -26,16 +26,16 @@ configuration["log-level"] = "WARNING"
 
 def detect_device():
     """
-    Detect whether CUDA GPU hardware and a suitable CUDA compiler (nvcc/nvc) are available.
+    Detect whether CUDA GPU hardware and a suitable Devito GPU compiler (nvc++/nvc) are available.
 
     Returns
     -------
     str
-        'cuda' if CUDA GPU acceleration is available AND a CUDA C compiler is present, otherwise 'cpu'.
+        'cuda' if CUDA GPU acceleration is available AND an OpenACC GPU compiler (nvc++/nvc) is present, otherwise 'cpu'.
     """
-    # Devito requires a CUDA compiler (nvcc or nvc/nvc++) to JIT-compile CUDA code
-    has_compiler = bool(shutil.which("nvcc") or shutil.which("nvc") or shutil.which("nvc++"))
-    if not has_compiler:
+    # Devito requires NVIDIA HPC SDK (nvc++ or nvc) to JIT-compile OpenACC GPU code
+    has_gpu_compiler = bool(shutil.which("nvc++") or shutil.which("nvc"))
+    if not has_gpu_compiler:
         return "cpu"
 
     # 1. Check PyTorch CUDA availability if PyTorch is installed
@@ -75,7 +75,7 @@ def _check_cuda_lib():
 
 def configure_devito_device(device="auto", platform=None, compiler=None, language=None):
     """
-    Configures Devito environment variables and runtime settings for CUDA or CPU.
+    Configures Devito environment variables and runtime settings for CUDA GPU or CPU.
 
     Parameters
     ----------
@@ -84,9 +84,9 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
     platform : str, optional
         Devito platform override (e.g. 'nvidiaX', 'volta', 'ampere', 'intel64').
     compiler : str, optional
-        Devito compiler override (e.g. 'cuda', 'nvc', 'custom', 'gcc').
+        Devito compiler override (e.g. 'nvc++', 'nvc', 'custom', 'gcc').
     language : str, optional
-        Devito code generation language override (e.g. 'cuda', 'openacc', 'C').
+        Devito code generation language override (e.g. 'openacc', 'openmp', 'C').
 
     Returns
     -------
@@ -99,8 +99,25 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
     device = device.lower()
 
     if device in ("cuda", "gpu"):
+        # Determine available GPU compiler
+        gpu_compiler = compiler
+        if not gpu_compiler:
+            if shutil.which("nvc++"):
+                gpu_compiler = "nvc++"
+            elif shutil.which("nvc"):
+                gpu_compiler = "nvc"
+
+        if not gpu_compiler:
+            warnings.warn(
+                "NVIDIA GPU hardware was detected, but Devito GPU compiler (nvc++/nvc) is not available. "
+                "Devito requires NVIDIA HPC SDK (nvc++) to JIT-compile GPU stencils. "
+                "Falling back to CPU execution.",
+                category=UserWarning
+            )
+            return configure_devito_device("cpu")
+
         target_platform = platform if platform else "nvidiaX"
-        target_compiler = compiler if compiler else "cuda"
+        target_compiler = gpu_compiler
         target_language = language if language else "openacc"
 
         os.environ["DEVITO_PLATFORM"] = target_platform
@@ -113,7 +130,7 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             configuration["compiler"] = target_compiler
             configuration["language"] = target_language
         except Exception as e:
-            warnings.warn(f"Failed to set Devito GPU configuration ({e}). Falling back to CPU.")
+            warnings.warn(f"Failed to set Devito GPU configuration ({e}). Falling back to CPU.", category=UserWarning)
             return configure_devito_device("cpu")
         device = "cuda"
     else:
@@ -290,7 +307,7 @@ class ShotRecord:
         else:
             raise ValueError(f"Invalid device '{device}'. Expected 'auto', 'cpu', or 'cuda'.")
 
-        configure_devito_device(self.device)
+        self.device = configure_devito_device(self.device)
         
         self.nx = nx 
         self.nz = nz 

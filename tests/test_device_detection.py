@@ -20,13 +20,21 @@ def test_configure_devito_device_cpu():
 
 
 def test_configure_devito_device_cuda():
-    dev = configure_devito_device("cuda")
-    assert dev == "cuda"
-    assert os.environ["DEVITO_PLATFORM"] == "nvidiaX"
-    assert os.environ["DEVITO_COMPILER"] == "cuda"
-    assert os.environ["DEVITO_LANGUAGE"] == "openacc"
-    assert str(configuration["platform"]) == "nvidiaX"
-    assert configuration["language"] == "openacc"
+    import shutil
+    has_gpu_compiler = bool(shutil.which("nvc++") or shutil.which("nvc"))
+    if has_gpu_compiler:
+        dev = configure_devito_device("cuda")
+        assert dev == "cuda"
+        assert os.environ["DEVITO_PLATFORM"] == "nvidiaX"
+        assert os.environ["DEVITO_COMPILER"] in ("nvc++", "nvc")
+        assert os.environ["DEVITO_LANGUAGE"] == "openacc"
+        assert str(configuration["platform"]) == "nvidiaX"
+        assert configuration["language"] == "openacc"
+    else:
+        with pytest.warns(UserWarning, match="Devito GPU compiler"):
+            dev = configure_devito_device("cuda")
+        assert dev == "cpu"
+        assert str(configuration["platform"]) == "intel64"
     
     # Restore CPU config
     configure_devito_device("cpu")
@@ -51,14 +59,23 @@ def test_shotrecord_device_cpu():
 
 
 def test_shotrecord_device_cuda_warning():
-    # Unless running on a machine with CUDA, passing device="cuda" triggers a warning
-    with pytest.warns(UserWarning, match="device='cuda' was explicitly requested"):
+    import shutil
+    has_gpu_compiler = bool(shutil.which("nvc++") or shutil.which("nvc"))
+    if has_gpu_compiler:
         sr = ShotRecord(
             nx=50, nz=50, dx=10.0, dz=10.0,
             n_sources=2, n_receivers=5,
             device="cuda"
         )
-    assert sr.device == "cuda"
+        assert sr.device == "cuda"
+    else:
+        with pytest.warns(UserWarning):
+            sr = ShotRecord(
+                nx=50, nz=50, dx=10.0, dz=10.0,
+                n_sources=2, n_receivers=5,
+                device="cuda"
+            )
+        assert sr.device == "cpu"
     # Restore CPU config
     configure_devito_device("cpu")
 
