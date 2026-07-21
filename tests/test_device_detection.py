@@ -24,9 +24,9 @@ def test_configure_devito_device_cuda():
     assert dev == "cuda"
     assert os.environ["DEVITO_PLATFORM"] == "nvidiaX"
     assert os.environ["DEVITO_COMPILER"] == "cuda"
-    assert os.environ["DEVITO_LANGUAGE"] == "cuda"
+    assert os.environ["DEVITO_LANGUAGE"] == "openacc"
     assert str(configuration["platform"]) == "nvidiaX"
-    assert configuration["language"] == "cuda"
+    assert configuration["language"] == "openacc"
     
     # Restore CPU config
     configure_devito_device("cpu")

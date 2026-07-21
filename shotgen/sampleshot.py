@@ -101,7 +101,7 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
     if device in ("cuda", "gpu"):
         target_platform = platform if platform else "nvidiaX"
         target_compiler = compiler if compiler else "cuda"
-        target_language = language if language else "cuda"
+        target_language = language if language else "openacc"
 
         os.environ["DEVITO_PLATFORM"] = target_platform
         os.environ["DEVITO_COMPILER"] = target_compiler
