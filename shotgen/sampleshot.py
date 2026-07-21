@@ -26,13 +26,18 @@ configuration["log-level"] = "WARNING"
 
 def detect_device():
     """
-    Detect whether CUDA GPU hardware and a suitable CUDA environment are available.
+    Detect whether CUDA GPU hardware and a suitable CUDA compiler (nvcc/nvc) are available.
 
     Returns
     -------
     str
-        'cuda' if CUDA GPU acceleration is available, otherwise 'cpu'.
+        'cuda' if CUDA GPU acceleration is available AND a CUDA C compiler is present, otherwise 'cpu'.
     """
+    # Devito requires a CUDA compiler (nvcc or nvc/nvc++) to JIT-compile CUDA code
+    has_compiler = bool(shutil.which("nvcc") or shutil.which("nvc") or shutil.which("nvc++"))
+    if not has_compiler:
+        return "cpu"
+
     # 1. Check PyTorch CUDA availability if PyTorch is installed
     try:
         import torch
@@ -41,18 +46,17 @@ def detect_device():
     except ImportError:
         pass
 
-    # 2. Check system nvidia-smi command and CUDA runtime/compiler presence
+    # 2. Check system nvidia-smi command
     if shutil.which("nvidia-smi"):
         try:
             res = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
             if res.returncode == 0:
-                if shutil.which("nvcc") or shutil.which("nvc") or shutil.which("nvc++") or _check_cuda_lib():
-                    return "cuda"
+                return "cuda"
         except Exception:
             pass
 
-    # 3. Check shared CUDA runtime library and C/C++ compiler availability
-    if _check_cuda_lib() and (shutil.which("nvcc") or shutil.which("nvc") or shutil.which("nvc++")):
+    # 3. Check shared CUDA runtime library
+    if _check_cuda_lib():
         return "cuda"
 
     return "cpu"
@@ -109,7 +113,8 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             configuration["compiler"] = target_compiler
             configuration["language"] = target_language
         except Exception as e:
-            warnings.warn(f"Failed to set Devito GPU configuration: {e}")
+            warnings.warn(f"Failed to set Devito GPU configuration ({e}). Falling back to CPU.")
+            return configure_devito_device("cpu")
         device = "cuda"
     else:
         target_platform = platform if platform else "intel64"
@@ -629,15 +634,33 @@ class ShotRecord:
             self.v0 = gaussian_filter(self.vel, sigma=self.smooth)
             
             # Ensure Devito environment variables & runtime configuration match target device
-            configure_devito_device(self.device)
+            self.device = configure_devito_device(self.device)
             print(f"[ShotRecord] Running wave simulation on device: {self.device.upper()} (Engine: {self.engine})")
 
-            if self.engine.lower() == "pylops":
-                self._execute_pylops(ms)
-                
-            elif self.engine.lower() == "devito":
-                self._setup_devito(ms)
-                self._execute_devito(**devito_kwargs)
+            try:
+                if self.engine.lower() == "pylops":
+                    self._execute_pylops(ms)
+                    
+                elif self.engine.lower() == "devito":
+                    self._setup_devito(ms)
+                    self._execute_devito(**devito_kwargs)
+            except Exception as e:
+                if self.device == "cuda":
+                    warnings.warn(
+                        f"[ShotRecord] Simulation failed on CUDA GPU device ({e}). "
+                        "Falling back to CPU execution.",
+                        category=UserWarning
+                    )
+                    self.device = "cpu"
+                    configure_devito_device("cpu")
+                    print(f"[ShotRecord] Retrying wave simulation on device: CPU (Engine: {self.engine})")
+                    if self.engine.lower() == "pylops":
+                        self._execute_pylops(ms)
+                    elif self.engine.lower() == "devito":
+                        self._setup_devito(ms)
+                        self._execute_devito(**devito_kwargs)
+                else:
+                    raise e
             
             if self.snr is not None:
                 rms = np.sqrt(np.mean(self.shot_run**2, axis=-1, keepdims=True))
