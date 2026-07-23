@@ -70,6 +70,7 @@ PARAM_TYPES = {
     "fd_order": int,
     "n_damping": int,
     "engine": str,
+    "device": str,
     "ntime": float,
 }
 

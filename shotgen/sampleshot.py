@@ -12,36 +12,6 @@ import sys
 import types
 import importlib.machinery
 
-def _disable_torch_import():
-    """
-    Prevent PyLops/third-party imports from pulling PyTorch and GNU libgomp.so.1 into process memory.
-    """
-    if "torch" not in sys.modules:
-        class DummyTensor:
-            pass
-        mock_torch = types.ModuleType("torch")
-        mock_torch.Tensor = DummyTensor
-        mock_torch.__spec__ = importlib.machinery.ModuleSpec("torch", None)
-        sys.modules["torch"] = mock_torch
-
-        dummy_torch_op = types.ModuleType("pylops.torchoperator")
-        dummy_torch_op.__all__ = []
-        sys.modules["pylops.torchoperator"] = dummy_torch_op
-
-_disable_torch_import()
-
-# Environment variables for OpenACC GPU execution
-os.environ["ACC_DEVICE_TYPE"] = "nvidia"
-os.environ["ACC_DEVICE_NUM"] = "0"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["NVCOMPILER_ACC_TIME"] = "1"
-os.environ["OMP_TARGET_OFFLOAD"] = "DISABLED"
-os.environ["NVCOMPILER_ACC_NOTIFY"] = "0"
-
-# Tell NVHPC compiler flags to target CUDA OpenACC explicitly
-os.environ["DEVITO_OPTIONS"] = "compiler=nvc++"
-os.environ["CFLAGS"] = "-O3 -acc -gpu=cc89 -fPIC -shared"  # cc89 targets Ada Lovelace architecture (RTX 4000 Ada)
-
 from examples.seismic import AcquisitionGeometry, Model
 from examples.seismic.acoustic import AcousticWaveSolver
 from devito import configuration
@@ -57,6 +27,22 @@ import joblib
 
 configuration["log-level"] = "WARNING"
 
+def _disable_torch_import():
+    """
+    Prevent PyLops/third-party imports from pulling PyTorch and GNU libgomp.so.1 into process memory.
+    """
+    if "torch" not in sys.modules:
+        class DummyTensor:
+            pass
+        mock_torch = types.ModuleType("torch")
+        mock_torch.Tensor = DummyTensor
+        mock_torch.__spec__ = importlib.machinery.SpecLoader if hasattr(importlib.machinery, "SpecLoader") else importlib.machinery.ModuleSpec("torch", None)
+        sys.modules["torch"] = mock_torch
+
+        dummy_torch_op = types.ModuleType("pylops.torchoperator")
+        dummy_torch_op.__all__ = []
+        sys.modules["pylops.torchoperator"] = dummy_torch_op
+
 class PureNvidiaCompiler(dac.NvidiaCompiler):
     """
     Subclasses NvidiaCompiler to strip out OpenMP flags (-mp, -fopenmp) and -gpu=pinned,
@@ -71,10 +57,9 @@ class PureNvidiaCompiler(dac.NvidiaCompiler):
             "-shared"
         ]
 
-# Register PureNvidiaCompiler into Devito's compiler registry
+# Register PureNvidiaCompiler into Devito's compiler registry for nvc++ and nvc
 dac.compiler_registry['nvc++'] = PureNvidiaCompiler
 dac.compiler_registry['nvc'] = PureNvidiaCompiler
-dac.compiler_registry['custom'] = PureNvidiaCompiler
 
 def detect_device():
     """
@@ -137,12 +122,12 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
     str
         The configured device string ('cuda' or 'cpu').
     """
-    if device == "auto" or device is None:
-        device = detect_device()
+    if device is None:
+        device = "auto"
 
-    device = device.lower()
+    device_req = str(device).lower()
 
-    if device in ("cuda", "gpu"):
+    if device_req in ("cuda", "gpu"):
         # Determine available GPU compiler
         gpu_compiler = compiler
         if not gpu_compiler:
@@ -158,7 +143,19 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
                 "Falling back to CPU execution.",
                 category=UserWarning
             )
-            return configure_devito_device("cpu")
+            return configure_devito_device("cpu", platform=platform, compiler=compiler, language=language)
+
+        _disable_torch_import()
+
+        # Environment variables for OpenACC GPU execution
+        os.environ["ACC_DEVICE_TYPE"] = "nvidia"
+        os.environ["ACC_DEVICE_NUM"] = "0"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        os.environ["NVCOMPILER_ACC_TIME"] = "1"
+        os.environ["OMP_TARGET_OFFLOAD"] = "DISABLED"
+        os.environ["NVCOMPILER_ACC_NOTIFY"] = "0"
+        os.environ["DEVITO_OPTIONS"] = "compiler=nvc++"
+        os.environ["CFLAGS"] = "-O3 -acc -gpu=cc89 -fPIC -shared"
 
         target_platform = platform if platform else "nvidiaX"
         target_compiler = gpu_compiler
@@ -169,7 +166,6 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
         os.environ["DEVITO_COMPILER"] = target_compiler
         os.environ["DEVITO_LANGUAGE"] = target_language
         os.environ["CC"] = target_compiler
-        os.environ["CFLAGS"] = "-O3 -acc -gpu=cc89 -fPIC -shared"
 
         try:
             from devito import configuration
@@ -178,9 +174,13 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             configuration["language"] = target_language
         except Exception as e:
             warnings.warn(f"Failed to set Devito GPU configuration ({e}). Falling back to CPU.", category=UserWarning)
-            return configure_devito_device("cpu")
-        device = "cuda"
-    else:
+            return configure_devito_device("cpu", platform=platform, compiler=compiler, language=language)
+        return "cuda"
+    elif device_req == "cpu":
+        # Cleanly bypass auto device detection & GPU environment setup when CPU is requested explicitly
+        for gpu_env_key in ["DEVITO_OPTIONS", "CFLAGS", "ACC_DEVICE_TYPE", "ACC_DEVICE_NUM", "CUDA_VISIBLE_DEVICES", "NVCOMPILER_ACC_TIME", "NVCOMPILER_ACC_NOTIFY", "OMP_TARGET_OFFLOAD"]:
+            os.environ.pop(gpu_env_key, None)
+
         target_platform = platform if platform else "intel64"
         target_compiler = compiler if compiler else "custom"
         target_language = language if language else "C"
@@ -196,10 +196,11 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             configuration["language"] = target_language
         except Exception as e:
             warnings.warn(f"Failed to set Devito CPU configuration: {e}")
-        device = "cpu"
-
-    print(target_platform, target_compiler, target_language)
-    return device
+        return "cpu"
+    else:
+        # device == 'auto'
+        detected = detect_device()
+        return configure_devito_device(detected, platform=platform, compiler=compiler, language=language)
 
 
 @contextlib.contextmanager

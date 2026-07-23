@@ -87,3 +87,14 @@ def test_shotrecord_invalid_device():
             n_sources=2, n_receivers=5,
             device="tpu"
         )
+
+
+def test_explicit_cpu_bypasses_gpu_env():
+    dev = configure_devito_device("cpu")
+    assert dev == "cpu"
+    assert "DEVITO_OPTIONS" not in os.environ
+    assert "CFLAGS" not in os.environ
+    assert "ACC_DEVICE_TYPE" not in os.environ
+    assert str(configuration["platform"]) == "intel64"
+    assert configuration["language"] == "C"
+
