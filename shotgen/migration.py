@@ -6,8 +6,6 @@ import numpy as np
 from devito import configuration, TimeFunction, Operator, Eq, solve, Function
 from examples.seismic import AcquisitionGeometry, PointSource, Model
 from examples.seismic.acoustic import AcousticWaveSolver
-import torch
-from deepwave import scalar_born
 from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 import scienceplots
@@ -499,11 +497,13 @@ class ReverseTimeMigrationGPU:
         self.nshots = self.shot_record.shape[0]
         self.nreceivers = len(self.receivers)
         
+        import torch
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         self.acquisition_params = self.set_acquisition_params()
         
     def set_acquisition_params(self):
+        import torch
         nsource_per_shot = 1
         source_locations = torch.from_numpy(self.sources[:,np.newaxis,:]).long().to(self.device)
         receiver_locations = torch.from_numpy(self.receivers).unsqueeze(0).expand(self.nshots, -1, -1).long().to(self.device)
@@ -525,6 +525,8 @@ class ReverseTimeMigrationGPU:
     
     
     def run(self, epochs=3):
+        import torch
+        from deepwave import scalar_born
         if self.acquisition_params is None:
             raise ValueError("Acquisition params have not been set")
         

@@ -14,36 +14,7 @@ import importlib.machinery
 
 
 
-def preload_nvhpc_runtime():
-    """
-    Preload NVHPC runtime libraries (libnvc.so, libnvomp.so) into RTLD_GLOBAL scope.
-    This prevents GNU libgomp symbol collision when PyTorch or PyLops are imported,
-    ensuring OpenACC GPU kernels compiled with nvc++ execute cleanly alongside PyTorch/PyLops.
-    """
-    search_paths = []
-    nvhpc_bin = shutil.which("nvc++") or shutil.which("nvc")
-    if nvhpc_bin:
-        nvhpc_lib = os.path.abspath(os.path.join(os.path.dirname(nvhpc_bin), "..", "lib"))
-        search_paths.append(nvhpc_lib)
-    if "NVCOMPILERS" in os.environ:
-        search_paths.append(os.path.join(os.environ["NVCOMPILERS"], "Linux_x86_64", "26.5", "compilers", "lib"))
-        search_paths.append(os.path.join(os.environ["NVCOMPILERS"], "Linux_x86_64", "26.1", "compilers", "lib"))
-    search_paths.extend([
-        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.5/compilers/lib",
-        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.1/compilers/lib",
-        "/opt/nvidia/hpc_sdk/Linux_x86_64/current/compilers/lib"
-    ])
-    for path in search_paths:
-        if os.path.isdir(path):
-            for libname in ["libnvc.so", "libnvomp.so"]:
-                lib_filepath = os.path.join(path, libname)
-                if os.path.exists(lib_filepath):
-                    try:
-                        ctypes.CDLL(lib_filepath, mode=ctypes.RTLD_GLOBAL)
-                    except Exception:
-                        pass
 
-preload_nvhpc_runtime()
 
 # Environment variables for OpenACC GPU execution
 os.environ["ACC_DEVICE_TYPE"] = "nvidia"
