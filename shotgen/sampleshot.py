@@ -4,14 +4,48 @@ from matplotlib.colors import TwoSlopeNorm
 import seisplot
 import numpy as np
 from scipy.ndimage import gaussian_filter
-import pylops
 import h5py
 import os
 import shutil
 import ctypes
+import sys
+import types
+import importlib.machinery
+
+def _disable_torch_import():
+    """
+    Prevent PyLops/third-party imports from pulling PyTorch and GNU libgomp.so.1 into process memory.
+    """
+    if "torch" not in sys.modules:
+        class DummyTensor:
+            pass
+        mock_torch = types.ModuleType("torch")
+        mock_torch.Tensor = DummyTensor
+        mock_torch.__spec__ = importlib.machinery.ModuleSpec("torch", None)
+        sys.modules["torch"] = mock_torch
+
+        dummy_torch_op = types.ModuleType("pylops.torchoperator")
+        dummy_torch_op.__all__ = []
+        sys.modules["pylops.torchoperator"] = dummy_torch_op
+
+_disable_torch_import()
+
+# Environment variables for OpenACC GPU execution
+os.environ["ACC_DEVICE_TYPE"] = "nvidia"
+os.environ["ACC_DEVICE_NUM"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["NVCOMPILER_ACC_TIME"] = "1"
+os.environ["OMP_TARGET_OFFLOAD"] = "DISABLED"
+os.environ["NVCOMPILER_ACC_NOTIFY"] = "0"
+
+# Tell NVHPC compiler flags to target CUDA OpenACC explicitly
+os.environ["DEVITO_OPTIONS"] = "compiler=nvc++"
+os.environ["CFLAGS"] = "-O3 -acc -gpu=cc89 -fPIC -shared"  # cc89 targets Ada Lovelace architecture (RTX 4000 Ada)
+
 from examples.seismic import AcquisitionGeometry, Model
 from examples.seismic.acoustic import AcousticWaveSolver
 from devito import configuration
+import devito.arch.compiler as dac
 import segyio
 from tqdm import tqdm
 from joblib import Parallel, delayed
@@ -23,6 +57,24 @@ import joblib
 
 configuration["log-level"] = "WARNING"
 
+class PureNvidiaCompiler(dac.NvidiaCompiler):
+    """
+    Subclasses NvidiaCompiler to strip out OpenMP flags (-mp, -fopenmp) and -gpu=pinned,
+    returning clean OpenACC flags to avoid triggering system GNU libgomp linkage in WSL2.
+    """
+    def __init_finalize__(self, **kwargs):
+        self.cflags = [
+            "-O3",
+            "-acc",
+            "-gpu=cc89",
+            "-fPIC",
+            "-shared"
+        ]
+
+# Register PureNvidiaCompiler into Devito's compiler registry
+dac.compiler_registry['nvc++'] = PureNvidiaCompiler
+dac.compiler_registry['nvc'] = PureNvidiaCompiler
+dac.compiler_registry['custom'] = PureNvidiaCompiler
 
 def detect_device():
     """
@@ -38,15 +90,7 @@ def detect_device():
     if not has_gpu_compiler:
         return "cpu"
 
-    # 1. Check PyTorch CUDA availability if PyTorch is installed
-    try:
-        import torch
-        if torch.cuda.is_available():
-            return "cuda"
-    except ImportError:
-        pass
-
-    # 2. Check system nvidia-smi command
+    # 1. Check system nvidia-smi command
     if shutil.which("nvidia-smi"):
         try:
             res = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -55,7 +99,7 @@ def detect_device():
         except Exception:
             pass
 
-    # 3. Check shared CUDA runtime library
+    # 2. Check shared CUDA runtime library
     if _check_cuda_lib():
         return "cuda"
 
@@ -120,9 +164,12 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
         target_compiler = gpu_compiler
         target_language = language if language else "openacc"
 
+        os.environ["DEVITO_ARCH"] = target_compiler
         os.environ["DEVITO_PLATFORM"] = target_platform
         os.environ["DEVITO_COMPILER"] = target_compiler
         os.environ["DEVITO_LANGUAGE"] = target_language
+        os.environ["CC"] = target_compiler
+        os.environ["CFLAGS"] = "-O3 -acc -gpu=cc89 -fPIC -shared"
 
         try:
             from devito import configuration
@@ -151,6 +198,7 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             warnings.warn(f"Failed to set Devito CPU configuration: {e}")
         device = "cpu"
 
+    print(target_platform, target_compiler, target_language)
     return device
 
 
@@ -554,6 +602,7 @@ class ShotRecord:
         # self.dt = self._devito_model0.critical_dt
         
     def _execute_pylops(self, ms):
+        import pylops
         dv = self.vel**(-2) - self.v0**(-2)
         
         def _get_rec_coords(si):
@@ -584,17 +633,18 @@ class ShotRecord:
             )
             return (Aop @ dv)[0]
 
-        # Determine number of parallel jobs for joblib based on device:
-        # GPU execution performs best with single process (n_jobs=1) to prevent CUDA context thrashing,
-        # whereas CPU execution benefits from multi-core process parallelism (n_jobs=-1).
-        n_jobs = 1 if self.device == "cuda" else -1
-
-        # Run the simulation using joblib
-        with tqdm_joblib(tqdm(desc="Source", total=self.n_sources)):
-            run = Parallel(n_jobs=n_jobs)(
-                delayed(_process_single_shot)(si, s) 
-                for si, s in enumerate(self.sources)
-            )
+        # Execute single-process loop directly for CUDA GPU to avoid IPC deadlock in joblib/loky subprocesses,
+        # while using joblib process parallelism for CPU multi-threading.
+        if self.device == "cuda":
+            run = []
+            for si, s in enumerate(tqdm(self.sources, desc="Source")):
+                run.append(_process_single_shot(si, s))
+        else:
+            with tqdm_joblib(tqdm(desc="Source", total=self.n_sources)):
+                run = Parallel(n_jobs=-1)(
+                    delayed(_process_single_shot)(si, s) 
+                    for si, s in enumerate(self.sources)
+                )
         run = np.array(run, dtype=self.float_type)
         self.shot_run = run
         
