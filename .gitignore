@@ -1,4 +1,4 @@
-shotgen.egg-info/
+*.egg-info/
 *__pycache__/
 *.vscode/
 data/
