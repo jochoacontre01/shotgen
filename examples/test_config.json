@@ -1,0 +1,18 @@
+{
+  "task": "simulation",
+  "nx": 6000,
+  "nz": 4000,
+  "dx": 1.0,
+  "dz": 1.0,
+  "n_sources": 2,
+  "n_receivers": 6,
+  "f0": 30.0,
+  "ms": 150.0,
+  "fd_order": 4,
+  "n_damping": 20,
+  "smooth": 5.0,
+  "v_base": 2500.0,
+  "vel_model": "marmousi",
+  "device": "auto",
+  "output_dir": "data/gpu_simulation_test"
+}

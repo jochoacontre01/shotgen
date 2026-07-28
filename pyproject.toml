@@ -1,77 +1,14 @@
-# Guide (user-friendly):
-# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
-
-# Specification (technical, formal):
-# https://packaging.python.org/en/latest/specifications/pyproject-toml/
-
-# Choosing a build backend:
-# https://packaging.python.org/en/latest/tutorials/packaging-projects/#choosing-a-build-backend
 [build-system]
-# A list of packages that are needed to build your package:
-requires = [
-    "setuptools",
-] 
-# The name of the Python object that frontends will use to perform the build:
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# This is the name of your project. The first time you publish this
-# package, this name will be registered for you.
-name = "shotgen"
-
-# Versions should comply with PEP 440:
+name = "shotgen-monorepo"
 version = "1.0.1"
-
-# This is a one-line description or tagline of what your project does.
-description = "A seismic sample shot generator"
-
-# This is an optional longer description of your project
+description = "Monorepo workspace for shotgen-core and shotgen-gpu"
 readme = "README.md"
-
-# Specify which Python versions you support.
-requires-python = ">=3.12.3"
-
-# This should be your name or the name of the organization who originally
-# authored the project
+requires-python = ">=3.11"
 authors = [{ name = "Jesus Ochoa", email = "jochoacontre@mun.ca" }]
 
-# This should be your name or the names of the organization who currently
-# maintains the project
-maintainers = [
-  { name = "Jesus Ochoa", email = "jochoacontre@mun.ca" },
-]
-
-# Classifiers help users find your project by categorizing it.
-classifiers = [
-  "Development Status :: 3 - Beta",
-  "Intended Audience :: Developers, Scientists, Students",
-  "Topic :: Software Development :: Build Tools",
-  "License :: OSI Approved :: MIT License",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3 :: Only",
-]
-
-# This field lists other packages that your project depends on to run.
-dependencies = [
-    "numpy",
-    "matplotlib",
-    "scipy",
-    "pylops",
-    "h5py",
-    "devito",
-    "pytest",
-    "segyio",
-    "joblib",
-    "deepwave",
-    "scikit-fmm",
-    "seisplot",
-    "cmocean",
-    "tqdm",
-    "PyYAML",
-]
-
-# This is configuration specific to the `setuptools` build backend.
-[tool.setuptools.packages.find]
-include = ["shotgen*"]
+[tool.setuptools]
+packages = []

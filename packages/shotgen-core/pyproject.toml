@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shotgen"
+version = "1.0.1"
+description = "A seismic sample shot generator (Core CPU/Torch package)"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Jesus Ochoa", email = "jochoacontre@mun.ca" }]
+maintainers = [{ name = "Jesus Ochoa", email = "jochoacontre@mun.ca" }]
+classifiers = [
+    "Development Status :: 3 - Beta",
+    "Intended Audience :: Developers, Scientists, Students",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "h5py",
+    "segyio",
+    "torch",
+    "deepwave",
+    "pylops",
+    "matplotlib",
+    "scikit-fmm",
+    "tqdm",
+    "joblib",
+    "scienceplots",
+    "cmocean",
+    "seisplot",
+    "PyYAML",
+]
+
+[project.scripts]
+shotgen-core = "shotgen.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

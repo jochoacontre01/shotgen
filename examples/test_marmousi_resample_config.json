@@ -1,0 +1,12 @@
+{
+    "task": "simulation",
+    "velocity_model": "marmousi",
+    "dx": 10.0,
+    "dz": 10.0,
+    "n_sources": 2,
+    "n_receivers": 10,
+    "f0": 25.0,
+    "ms": 200.0,
+    "device": "cuda",
+    "output_dir": "data/test_marmousi_resample_output"
+}

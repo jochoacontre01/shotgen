@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shotgen-gpu"
+version = "1.0.1"
+description = "Devito / OpenACC GPU wavefield propagation engine for shotgen"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Jesus Ochoa", email = "jochoacontre@mun.ca" }]
+maintainers = [{ name = "Jesus Ochoa", email = "jochoacontre@mun.ca" }]
+classifiers = [
+    "Development Status :: 3 - Beta",
+    "Intended Audience :: Developers, Scientists, Students",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "h5py",
+    "devito",
+    "sympy",
+    "segyio",
+    "tqdm",
+    "joblib",
+]
+
+[project.scripts]
+shotgen-gpu = "shotgen_gpu.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -102,6 +102,7 @@ def test_rtm_migration_success(small_migration_dataset):
         nbl=nbl,
         smooth_sigma=3.0,
         space_order=2, # Fast order for testing
+        device="cpu",
     )
     
     # Verify properties loaded successfully
@@ -223,7 +224,8 @@ def test_origin_persistence_and_roundtrip(tmp_path):
     rtm = ReverseTimeMigration(
         dataset_dir=dataset_dir,
         nbl=5,
-        space_order=2
+        space_order=2,
+        device="cpu",
     )
     
     # Note: RTM reads origin from dataset_dir if not overridden via kwargs
@@ -247,6 +249,7 @@ def test_rtm_source_coordinates_updating(small_migration_dataset):
         nbl=nbl,
         smooth_sigma=3.0,
         space_order=2,
+        device="cpu",
     )
     
     original_forward = rtm.solver.forward
