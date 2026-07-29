@@ -45,7 +45,7 @@ def main():
         vmax = np.quantile(lap_img, 0.95)
         norm = TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax) if vmin < 0 < vmax else None
 
-        im = plt.imshow(lap_img.T, cmap="seismic", extent=extent, norm=norm, aspect="auto")
+        im = plt.imshow(lap_img.T, cmap="grey", extent=extent, norm=norm, aspect="auto")
         plt.colorbar(im, label="Amplitude")
         plt.xlabel("Distance (m)")
         plt.ylabel("Depth (m)")
