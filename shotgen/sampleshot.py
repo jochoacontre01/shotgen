@@ -371,9 +371,26 @@ class ShotRecord:
         self.v0 = None
         self.us = None
         self.tn = None
-        self.origin = origin
-        self.snr = snr
+        self.snr = float(snr) if (snr is not None and not (isinstance(snr, str) and snr.strip().lower() in ("none", "null"))) else None
         
+    def apply_noise(self, snr=None):
+        """
+        Applies zero-mean Gaussian noise to self.shot_run based on SNR.
+        SNR is defined such that RMS(trace) / SNR = std(noise).
+        """
+        if snr is not None:
+            if isinstance(snr, str) and snr.strip().lower() in ("none", "null"):
+                self.snr = None
+            else:
+                self.snr = float(snr)
+
+        if self.snr is not None and self.shot_run is not None:
+            safe_snr = float(self.snr)
+            if safe_snr > 0:
+                rms = np.sqrt(np.mean(self.shot_run**2, axis=-1, keepdims=True))
+                noise_std = rms / safe_snr
+                noise = np.random.standard_normal(size=self.shot_run.shape).astype(self.float_type)
+                self.shot_run = self.shot_run + (noise * noise_std)
         self.src_origin = src_origin
         self.rec_origin = rec_origin
         
@@ -728,7 +745,7 @@ class ShotRecord:
                 t_orig = np.linspace(0, ms, self.shot_run.shape[-1])
                 t_new = np.linspace(0, ms, new_nt)
                 from scipy.interpolate import interp1d
-                f_interp = interp1d(t_orig, self.shot_run, axis=-1, kind="cubic", fill_value="extrapolate")
+                f_interp = interp1d(t_orig, self.shot_run, axis=-1, kind="linear", fill_value="extrapolate")
                 resampled_shot_run = f_interp(t_new).astype(self.float_type)
                 del self.shot_run
                 import gc

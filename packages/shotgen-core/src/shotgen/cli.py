@@ -106,9 +106,16 @@ def main():
     parser.add_argument("--n-receivers", type=int, help="Number of receivers")
     parser.add_argument("--f0", type=float, help="Central frequency (Hz)")
     parser.add_argument("--ms", "--ntime", type=float, help="Simulation duration (ms)")
-    parser.add_argument("--engine", type=str, default="pylops", help="Simulation engine ('pylops' or 'devito')")
-    parser.add_argument("--device", type=str, default="cpu", help="Target device ('cpu', 'cuda', etc.)")
+    parser.add_argument("--engine", type=str, help="Simulation engine ('pylops' or 'devito')")
+    parser.add_argument("--device", type=str, help="Target device ('cpu', 'cuda', etc.)")
     parser.add_argument("--fs-ms", "--fs_ms", dest="fs_ms", type=float, help="Sampling rate in milliseconds (float)")
+    parser.add_argument("--snr", type=float, help="Signal-to-noise ratio for noise addition (float)")
+    parser.add_argument("--smooth", type=float, help="Smoothing factor for background velocity model")
+    parser.add_argument("--fd-order", "--fd_order", dest="fd_order", type=int, help="FD space order")
+    parser.add_argument("--n-damping", "--n_damping", dest="n_damping", type=int, help="Damping boundary size")
+    parser.add_argument("--gather", type=str, help="Gather type ('cmp' or 'common shot')")
+    parser.add_argument("--group-offset", "--group_offset", dest="group_offset", type=float, help="Group offset")
+    parser.add_argument("--shot-offset", "--shot_offset", dest="shot_offset", type=float, help="Shot offset")
 
     args = parser.parse_args()
 
@@ -138,19 +145,50 @@ def main():
         cfg["device"] = args.device
     if args.fs_ms is not None:
         cfg["fs_ms"] = args.fs_ms
+    if args.snr is not None:
+        cfg["snr"] = args.snr
+    if args.smooth is not None:
+        cfg["smooth"] = args.smooth
+    if args.fd_order is not None:
+        cfg["fd_order"] = args.fd_order
+    if args.n_damping is not None:
+        cfg["n_damping"] = args.n_damping
+    if args.gather:
+        cfg["gather"] = args.gather
+    if args.group_offset is not None:
+        cfg["group_offset"] = args.group_offset
+    if args.shot_offset is not None:
+        cfg["shot_offset"] = args.shot_offset
 
     cli_enabled = args.cli or cfg.get("cli", False)
 
+    def _parse_val(val, default, val_type=float):
+        if val is None or (isinstance(val, str) and val.strip().lower() in ("none", "null")):
+            return default
+        return val_type(val)
+
     vel, nx, nz, dx, dz = _load_velocity_model_core(cfg)
-    n_sources = int(cfg.get("n_sources", 2))
-    n_receivers = int(cfg.get("n_receivers", 10))
-    f0 = float(cfg.get("f0", 25.0))
-    ms = float(cfg.get("ms", 300.0))
+    n_sources = _parse_val(cfg.get("n_sources"), 2, int)
+    n_receivers = _parse_val(cfg.get("n_receivers"), 10, int)
+    f0 = _parse_val(cfg.get("f0"), 25.0, float)
+    ms = _parse_val(cfg.get("ms", cfg.get("ntime")), 300.0, float)
     engine = str(cfg.get("engine", "pylops"))
     device = str(cfg.get("device", "cpu"))
-    fs_ms = cfg.get("fs_ms", None)
-    if fs_ms is not None:
-        fs_ms = float(fs_ms)
+    fs_ms = _parse_val(cfg.get("fs_ms"), None, float)
+    snr = _parse_val(cfg.get("snr"), None, float)
+    smooth = _parse_val(cfg.get("smooth"), 5.0, float)
+    fd_order = _parse_val(cfg.get("fd_order"), 4, int)
+    n_damping = _parse_val(cfg.get("n_damping"), 100, int)
+    gather = cfg.get("gather", "cmp")
+    group_offset = _parse_val(cfg.get("group_offset"), 1.0, float)
+    shot_offset = _parse_val(cfg.get("shot_offset"), 1.0, float)
+    meters_per_cell = _parse_val(cfg.get("meters_per_cell"), 1.0, float)
+    origin = tuple(cfg.get("origin", [0.0, 0.0]))
+    src_origin = tuple(cfg.get("src_origin", [0.0, 0.0]))
+    rec_origin = tuple(cfg.get("rec_origin", [0.0, 0.0]))
+
+    float_type_str = str(cfg.get("float_type", "float32")).lower()
+    float_type = np.float64 if "64" in float_type_str else np.float32
 
     shot = ShotRecord(
         nx=nx,
@@ -160,14 +198,44 @@ def main():
         n_sources=n_sources,
         n_receivers=n_receivers,
         f0=f0,
+        src_origin=src_origin,
+        rec_origin=rec_origin,
+        origin=origin,
+        meters_per_cell=meters_per_cell,
+        fd_order=fd_order,
+        n_damping=n_damping,
+        gather=gather,
+        group_offset=group_offset,
+        shot_offset=shot_offset,
+        smooth=smooth,
+        snr=snr,
         engine=engine,
+        float_type=float_type,
         device=device,
         fs_ms=fs_ms,
     )
     shot.set_model(vel)
     shot.run(ms=ms)
 
-    cfg.update({"nx": nx, "nz": nz, "dx": dx, "dz": dz, "n_sources": n_sources, "n_receivers": n_receivers, "f0": f0, "ms": ms})
+    cfg.update({
+        "nx": nx,
+        "nz": nz,
+        "dx": dx,
+        "dz": dz,
+        "n_sources": n_sources,
+        "n_receivers": n_receivers,
+        "f0": f0,
+        "ms": ms,
+        "snr": snr,
+        "fs_ms": fs_ms,
+        "group_offset": group_offset,
+        "shot_offset": shot_offset,
+        "gather": gather,
+        "smooth": smooth,
+        "fd_order": fd_order,
+        "n_damping": n_damping,
+        "meters_per_cell": meters_per_cell,
+    })
     if "output_dir" in cfg:
         output_dir = Path(cfg["output_dir"])
     else:

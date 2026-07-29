@@ -6,10 +6,10 @@
     "dx": 5,
     "dz": 5,
     "max_size": null,
-    "n_sources": 100,
+    "n_sources": 1,
     "n_receivers": 564,
-    "ms": 9100.0,
-    "f0": 8.0,
+    "ms": 7000.0,
+    "f0": 20.0,
     "src_origin": [
         0.0,
         2.0
@@ -26,13 +26,12 @@
     "shot_offset": 50.0,
     "gather": "common shot",
     "smooth": 5,
-    "snr": null,
+    "snr": 0.1,
     "fd_order": 50,
     "n_damping": 256,
     "engine": "pylops",
     "device": "auto",
     "fs_ms": 2.0,
-    "output_dir": "data/commonshot_",
     "save_wavefield": false
 }
 

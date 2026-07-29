@@ -366,11 +366,30 @@ class ShotRecord:
         self.src = self.aop.geometry.src.data[:, 0]
         self.dt = self.aop.geometry.dt
 
-    def run(self, ms=500, gain=None, **kwargs):
-        if not self._model_ready:
-            raise ValueError("You need to create a model before running a simulation")
+    def apply_noise(self, snr=None):
+        """
+        Applies zero-mean Gaussian noise to self.shot_run based on SNR.
+        SNR is defined such that RMS(trace) / SNR = std(noise).
+        """
+        if snr is not None:
+            if isinstance(snr, str) and snr.strip().lower() in ("none", "null"):
+                self.snr = None
+            else:
+                self.snr = float(snr)
 
+        if self.snr is not None and self.shot_run is not None:
+            safe_snr = float(self.snr)
+            if safe_snr > 0:
+                rms = np.sqrt(np.mean(self.shot_run**2, axis=-1, keepdims=True))
+                noise_std = rms / safe_snr
+                noise = np.random.standard_normal(size=self.shot_run.shape).astype(self.float_type)
+                self.shot_run = self.shot_run + (noise * noise_std)
+
+    def run(self, ms=1000.0, **kwargs):
         self.tn = ms
+        if not self._model_ready:
+            raise RuntimeError("Model is not initialized. Call set_model first.")
+
         self.v0 = gaussian_filter(self.vel, sigma=self.smooth)
 
         if self.engine.lower() == "devito":
@@ -390,8 +409,16 @@ class ShotRecord:
                     "n_damping": int(self.n_damping),
                     "smooth": float(self.smooth),
                     "origin": [float(self.origin[0]), float(self.origin[1])],
-                    "sources": self.sources.tolist(),
-                    "receivers": self.recs.tolist(),
+                    "src_origin": [float(self.src_origin[0]), float(self.src_origin[1])],
+                    "rec_origin": [float(self.rec_origin[0]), float(self.rec_origin[1])],
+                    "group_offset": float(self.group_offset),
+                    "shot_offset": float(self.shot_offset),
+                    "gather": str(self.gather),
+                    "meters_per_cell": float(self.meters_per_cell),
+                    "snr": float(self.snr) if self.snr is not None else None,
+                    "fs_ms": float(self.fs_ms) if self.fs_ms is not None else None,
+                    "sources": self.sources.tolist() if hasattr(self, 'sources') and self.sources is not None else None,
+                    "receivers": self.recs.tolist() if hasattr(self, 'recs') and self.recs is not None else None,
                     "v_base": float(np.mean(self.vel)),
                     "device": self.device,
                     "output_dir": tmp_dir,
@@ -419,12 +446,8 @@ class ShotRecord:
                     raise RuntimeError("GPU Simulation failed to write simulation_results.h5")
         else:
             self._execute_pylops(ms)
-
-        if self.snr is not None:
-            rms = np.sqrt(np.mean(self.shot_run**2, axis=-1, keepdims=True))
-            noise_std = rms / self.snr
-            noise = np.random.standard_normal(size=self.shot_run.shape).astype(self.float_type)
-            self.shot_run += (noise * noise_std)
+            if self.snr is not None:
+                self.apply_noise()
 
         if self.fs_ms is not None and self.fs_ms > 0:
             dt_model_ms = ms / (self.shot_run.shape[-1] - 1) if self.shot_run.shape[-1] > 1 else self.fs_ms
@@ -432,7 +455,7 @@ class ShotRecord:
             t_orig = np.linspace(0, ms, self.shot_run.shape[-1])
             t_new = np.linspace(0, ms, new_nt)
             from scipy.interpolate import interp1d
-            f_interp = interp1d(t_orig, self.shot_run, axis=-1, kind="cubic", fill_value="extrapolate")
+            f_interp = interp1d(t_orig, self.shot_run, axis=-1, kind="linear", fill_value="extrapolate")
             resampled_shot_run = f_interp(t_new).astype(self.float_type)
             del self.shot_run
             import gc
@@ -477,6 +500,8 @@ class ShotRecord:
             f.create_dataset("nz", data=self.nz)
             if hasattr(self, 'fs_ms') and self.fs_ms is not None:
                 f.create_dataset("fs_ms", data=self.fs_ms)
+            if hasattr(self, 'snr') and self.snr is not None:
+                f.create_dataset("snr", data=self.snr)
 
 
         print(f"Saved simulation files to folder {name}")
@@ -627,6 +652,10 @@ class LoadShotRecord:
                     self.wavelet = f["wavelet"][()]
                 if "f0" in f:
                     self.f0 = f["f0"][()]
+                if "snr" in f:
+                    self.snr = f["snr"][()]
+                else:
+                    self.snr = None
 
     def plot(self, **kwargs):
         shots_stack = np.hstack([shot.T for shot in self.shots]).T

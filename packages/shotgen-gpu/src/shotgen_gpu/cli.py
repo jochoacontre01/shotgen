@@ -145,30 +145,47 @@ def main():
         sys.exit(1)
 
 
+def _parse_val(val, default, val_type=float):
+    if val is None or (isinstance(val, str) and val.strip().lower() in ("none", "null")):
+        return default
+    return val_type(val)
+
+
 def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
     vel, nx, nz, dx, dz = _load_velocity_model(cfg)
 
-    n_sources = int(cfg.get("n_sources", 2))
-    n_receivers = int(cfg.get("n_receivers", 10))
-    f0 = float(cfg.get("f0", 25.0))
-    ms = float(cfg.get("ms", 300.0))
-    fd_order = int(cfg.get("fd_order", 4))
-    n_damping = int(cfg.get("n_damping", 40))
-    smooth = float(cfg.get("smooth", 5.0))
+    n_sources = _parse_val(cfg.get("n_sources"), 2, int)
+    n_receivers = _parse_val(cfg.get("n_receivers"), 10, int)
+    f0 = _parse_val(cfg.get("f0"), 25.0, float)
+    ms = _parse_val(cfg.get("ms", cfg.get("ntime")), 300.0, float)
+    fd_order = _parse_val(cfg.get("fd_order"), 4, int)
+    n_damping = _parse_val(cfg.get("n_damping"), 40, int)
+    smooth = _parse_val(cfg.get("smooth"), 5.0, float)
     origin = tuple(cfg.get("origin", [0.0, 0.0]))
+    src_origin = tuple(cfg.get("src_origin", [0.0, 0.0]))
+    rec_origin = tuple(cfg.get("rec_origin", [0.0, 0.0]))
+    group_offset = _parse_val(cfg.get("group_offset"), 1.0, float)
+    shot_offset = _parse_val(cfg.get("shot_offset"), 1.0, float)
+    gather = cfg.get("gather", "cmp")
+    meters_per_cell = _parse_val(cfg.get("meters_per_cell"), 1.0, float)
+    snr = _parse_val(cfg.get("snr"), None, float)
+    fs_ms = _parse_val(cfg.get("fs_ms"), None, float)
 
-    if "sources" in cfg:
-        sources = np.array(cfg["sources"], dtype=np.float32)
+    float_type_str = str(cfg.get("float_type", "float32")).lower()
+    float_type = np.float64 if "64" in float_type_str else np.float32
+
+    if "sources" in cfg and cfg["sources"] is not None:
+        sources = np.array(cfg["sources"], dtype=float_type)
     else:
-        sx = origin[0] + np.linspace(dx * 2, (nx - 2) * dx, n_sources, dtype=np.float32)
-        sz = np.ones(n_sources, dtype=np.float32) * origin[1]
+        sx = origin[0] + np.linspace(dx * 2, (nx - 2) * dx, n_sources, dtype=float_type)
+        sz = np.ones(n_sources, dtype=float_type) * origin[1]
         sources = np.vstack([sx, sz]).T
 
-    if "receivers" in cfg:
-        receivers = np.array(cfg["receivers"], dtype=np.float32)
+    if "receivers" in cfg and cfg["receivers"] is not None:
+        receivers = np.array(cfg["receivers"], dtype=float_type)
     else:
-        rx = origin[0] + np.linspace(dx, (nx - 1) * dx, n_receivers, dtype=np.float32)
-        rz = np.ones(n_receivers, dtype=np.float32) * origin[1]
+        rx = origin[0] + np.linspace(dx, (nx - 1) * dx, n_receivers, dtype=float_type)
+        rz = np.ones(n_receivers, dtype=float_type) * origin[1]
         receivers = np.vstack([rx, rz]).T
 
     solver = AcousticWaveSolverWrapper(
@@ -185,11 +202,30 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
         n_damping=n_damping,
         smooth=smooth,
         device=cfg.get("device", "auto"),
+        float_type=float_type,
     )
 
     shot_run, us, wavelet = solver.run(ms=ms, save_wavefield=cfg.get("save_wavefield", False))
 
-    cfg.update({"nx": nx, "nz": nz, "dx": dx, "dz": dz, "n_sources": n_sources, "n_receivers": n_receivers, "f0": f0, "ms": ms})
+    cfg.update({
+        "nx": nx,
+        "nz": nz,
+        "dx": dx,
+        "dz": dz,
+        "n_sources": n_sources,
+        "n_receivers": n_receivers,
+        "f0": f0,
+        "ms": ms,
+        "snr": snr,
+        "fs_ms": fs_ms,
+        "group_offset": group_offset,
+        "shot_offset": shot_offset,
+        "gather": gather,
+        "smooth": smooth,
+        "fd_order": fd_order,
+        "n_damping": n_damping,
+        "meters_per_cell": meters_per_cell,
+    })
     if "output_dir" in cfg:
         output_dir = Path(cfg["output_dir"])
     else:
@@ -198,10 +234,6 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
 
     n_rec_actual = receivers.shape[1] if receivers.ndim == 3 else len(receivers)
     n_src_actual = len(sources)
-
-    fs_ms = cfg.get("fs_ms", None)
-    if fs_ms is not None:
-        fs_ms = float(fs_ms)
 
     # Save SEGY and metadata using SegyIO via ShotRecord
     shot_rec = ShotRecord(
@@ -212,9 +244,19 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
         n_receivers=n_rec_actual,
         n_sources=n_src_actual,
         f0=f0,
+        src_origin=src_origin,
+        rec_origin=rec_origin,
         origin=origin,
+        meters_per_cell=meters_per_cell,
+        fd_order=fd_order,
+        n_damping=n_damping,
+        gather=gather,
+        group_offset=group_offset,
+        shot_offset=shot_offset,
         smooth=smooth,
+        snr=snr,
         engine="devito",
+        float_type=float_type,
         device=cfg.get("device", "auto"),
         fs_ms=fs_ms,
     )
@@ -222,12 +264,16 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
     shot_rec.v0 = gaussian_filter(vel, sigma=smooth)
     shot_rec.shot_run = shot_run
 
+    if snr is not None:
+        shot_rec.apply_noise(snr=snr)
+        shot_run = shot_rec.shot_run
+
     if fs_ms is not None and fs_ms > 0:
         new_nt = int(np.round(ms / fs_ms)) + 1
         t_orig = np.linspace(0, ms, shot_run.shape[-1])
         t_new = np.linspace(0, ms, new_nt)
         from scipy.interpolate import interp1d
-        f_interp = interp1d(t_orig, shot_run, axis=-1, kind="cubic", fill_value="extrapolate")
+        f_interp = interp1d(t_orig, shot_run, axis=-1, kind="linear", fill_value="extrapolate")
         resampled_shot_run = f_interp(t_new).astype(shot_run.dtype)
         del shot_run
         import gc
@@ -254,6 +300,8 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
         f.create_dataset("nz", data=nz)
         if fs_ms is not None:
             f.create_dataset("fs_ms", data=fs_ms)
+        if snr is not None:
+            f.create_dataset("snr", data=snr)
         f.create_dataset("dx", data=dx)
         f.create_dataset("dz", data=dz)
         f.create_dataset("ms", data=ms)
