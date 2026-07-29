@@ -111,10 +111,12 @@ class ShotRecord:
         snr=None,
         engine="pylops",
         float_type=np.float32,
-        device="auto"
+        device="auto",
+        fs_ms=None
     ):
         self.engine = engine
         self.float_type = float_type
+        self.fs_ms = fs_ms
 
         # Device detection and setup
         if engine.lower() == "pylops" and (device == "auto" or device is None):
@@ -424,8 +426,18 @@ class ShotRecord:
             noise = np.random.standard_normal(size=self.shot_run.shape).astype(self.float_type)
             self.shot_run += (noise * noise_std)
 
-        if gain is not None and self.aop is not None:
-            self.shot_run = self.apply_gain(gain)
+        if self.fs_ms is not None and self.fs_ms > 0:
+            dt_model_ms = ms / (self.shot_run.shape[-1] - 1) if self.shot_run.shape[-1] > 1 else self.fs_ms
+            new_nt = int(np.round(ms / self.fs_ms)) + 1
+            t_orig = np.linspace(0, ms, self.shot_run.shape[-1])
+            t_new = np.linspace(0, ms, new_nt)
+            from scipy.interpolate import interp1d
+            f_interp = interp1d(t_orig, self.shot_run, axis=-1, kind="cubic", fill_value="extrapolate")
+            resampled_shot_run = f_interp(t_new).astype(self.float_type)
+            del self.shot_run
+            import gc
+            gc.collect()
+            self.shot_run = resampled_shot_run
 
         nelements_time = self.shot_run.shape[-1]
         self.time_vector = np.linspace(0, ms, nelements_time) * (1e-3)
@@ -461,6 +473,8 @@ class ShotRecord:
             f.create_dataset("dz", data=self.dz)
             f.create_dataset("nx", data=self.nx)
             f.create_dataset("nz", data=self.nz)
+            if hasattr(self, 'fs_ms') and self.fs_ms is not None:
+                f.create_dataset("fs_ms", data=self.fs_ms)
 
 
         print(f"Saved simulation files to folder {name}")

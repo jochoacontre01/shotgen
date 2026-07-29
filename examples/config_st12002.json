@@ -1,0 +1,38 @@
+{
+    "task": "simulation",
+    "velocity_model": "marmousi",
+    "meters_per_cell": 1.0,
+    "float_type": "float32",
+    "dx": 2,
+    "dz": 2,
+    "max_size": null,
+    "n_sources": 100,
+    "n_receivers": 564,
+    "ms": 9100.0,
+    "f0": 8.0,
+    "src_origin": [
+        0.0,
+        2.0
+      ],
+    "rec_origin": [
+        0.0,
+        10.0
+      ],
+    "origin": [
+        0.0,
+        0.0
+      ],
+    "group_offset": 12.5,
+    "shot_offset": 50.0,
+    "gather": "common shot",
+    "smooth": 5,
+    "snr": null,
+    "fd_order": 50,
+    "n_damping": 256,
+    "engine": "pylops",
+    "device": "auto",
+    "fs_ms": 2.0,
+    "output_dir": "data/commonshot_",
+    "save_wavefield": false
+}
+

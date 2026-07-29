@@ -20,6 +20,7 @@ from shotgen.sampleshot import (
     _find_assets_dir,
     ShotRecord
 )
+from shotgen.utils import generate_simulation_dir_name
 
 
 def _load_velocity_model(cfg: dict):
@@ -188,11 +189,19 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
 
     shot_run, us, wavelet = solver.run(ms=ms, save_wavefield=cfg.get("save_wavefield", False))
 
-    output_dir = Path(cfg.get("output_dir", "data/gpu_simulation_output"))
+    cfg.update({"nx": nx, "nz": nz, "dx": dx, "dz": dz, "n_sources": n_sources, "n_receivers": n_receivers, "f0": f0, "ms": ms})
+    if "output_dir" in cfg:
+        output_dir = Path(cfg["output_dir"])
+    else:
+        output_dir = generate_simulation_dir_name(cfg, base_dir="data")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     n_rec_actual = receivers.shape[1] if receivers.ndim == 3 else len(receivers)
     n_src_actual = len(sources)
+
+    fs_ms = cfg.get("fs_ms", None)
+    if fs_ms is not None:
+        fs_ms = float(fs_ms)
 
     # Save SEGY and metadata using SegyIO via ShotRecord
     shot_rec = ShotRecord(
@@ -207,10 +216,25 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
         smooth=smooth,
         engine="devito",
         device=cfg.get("device", "auto"),
+        fs_ms=fs_ms,
     )
     shot_rec.vel = vel
     shot_rec.v0 = gaussian_filter(vel, sigma=smooth)
     shot_rec.shot_run = shot_run
+
+    if fs_ms is not None and fs_ms > 0:
+        new_nt = int(np.round(ms / fs_ms)) + 1
+        t_orig = np.linspace(0, ms, shot_run.shape[-1])
+        t_new = np.linspace(0, ms, new_nt)
+        from scipy.interpolate import interp1d
+        f_interp = interp1d(t_orig, shot_run, axis=-1, kind="cubic", fill_value="extrapolate")
+        resampled_shot_run = f_interp(t_new).astype(shot_run.dtype)
+        del shot_run
+        import gc
+        gc.collect()
+        shot_run = resampled_shot_run
+        shot_rec.shot_run = shot_run
+
     shot_rec.sources = sources
     shot_rec.recs = receivers
     shot_rec.src = wavelet
@@ -228,6 +252,8 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
             f.create_dataset("wavelet", data=wavelet)
         f.create_dataset("nx", data=nx)
         f.create_dataset("nz", data=nz)
+        if fs_ms is not None:
+            f.create_dataset("fs_ms", data=fs_ms)
         f.create_dataset("dx", data=dx)
         f.create_dataset("dz", data=dz)
         f.create_dataset("ms", data=ms)

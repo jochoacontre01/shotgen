@@ -8,6 +8,7 @@ import warnings
 
 from shotgen.sampleshot import ShotRecord, load_overthrust, load_bpsalt, load_marmousi
 from shotgen.io import generate_video
+from shotgen.utils import generate_simulation_dir_name
 
 import scienceplots
 import matplotlib.pyplot as plt
@@ -71,6 +72,7 @@ PARAM_TYPES = {
     "n_damping": int,
     "engine": str,
     "ntime": float,
+    "fs_ms": float,
 }
 
 
@@ -81,7 +83,7 @@ def validate_type(name, val):
             val = None
 
     if val is None:
-        if name in ("snr", "f0", "src_origin", "rec_origin", "origin", "float_type", "max_size"):
+        if name in ("snr", "f0", "src_origin", "rec_origin", "origin", "float_type", "max_size", "fs_ms"):
             return None
         raise TypeError(f"Parameter '{name}' cannot be None.")
         
@@ -174,6 +176,7 @@ def main():
     parser.add_argument("--n-damping", "--n_damping", dest="n_damping", type=int, default=argparse.SUPPRESS, help="Number of cells in the damping border (int)")
     parser.add_argument("--engine", type=str, default=argparse.SUPPRESS, help="Born modeling computation engine, e.g., 'pylops' (str)")
     parser.add_argument("--device", type=str, default=argparse.SUPPRESS, help="Target device for wave simulation: 'auto', 'cpu', or 'cuda' (str)")
+    parser.add_argument("--fs-ms", "--fs_ms", dest="fs_ms", type=float, default=argparse.SUPPRESS, help="Sampling rate in milliseconds (float or None)")
     
     # Maintain support for existing other arguments
     parser.add_argument("--decimate", type=int, default=argparse.SUPPRESS, help="Decimation factor for the velocity model (int)")
@@ -278,7 +281,7 @@ def main():
     optional_keys = [
         "f0", "src_origin", "rec_origin", "origin", "group_offset",
         "shot_offset", "gather", "smooth", "snr", "fd_order", "n_damping",
-        "engine", "meters_per_cell", "float_type", "device"
+        "engine", "meters_per_cell", "float_type", "device", "fs_ms"
     ]
     for key in optional_keys:
         if key in validated_params:
@@ -310,8 +313,21 @@ def main():
         if not args.no_show:
             shot.show_shot(cmap="grey", cli=args.cli, hq=args.high_quality)
         
-        snr_val = f"{shot.snr:.1f}" if shot.snr is not None else "None"
-        filename = f"data/{shot.gather.replace(' ', '')}-shot_{shot.nx}nx_{shot.nz}nz_{shot.tn}ms_{shot.dx}dx_{shot.dz}dz_{shot.n_receivers}rec_{shot.n_sources}src_{shot.f0}hz_{shot.group_offset:.0f}goffset_{shot.shot_offset:.0f}soffset_{snr_val}snr"
+        sim_cfg = {
+            "gather": shot.gather,
+            "nx": shot.nx,
+            "nz": shot.nz,
+            "dx": shot.dx,
+            "dz": shot.dz,
+            "n_sources": shot.n_sources,
+            "n_receivers": shot.n_receivers,
+            "ms": shot.tn,
+            "f0": shot.f0,
+            "group_offset": shot.group_offset,
+            "shot_offset": shot.shot_offset,
+            "snr": shot.snr,
+        }
+        filename = str(generate_simulation_dir_name(sim_cfg, base_dir="data"))
 
         if args.yes:
             shot.save_shot(filename)

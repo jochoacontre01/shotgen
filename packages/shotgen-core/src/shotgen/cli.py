@@ -14,8 +14,7 @@ from shotgen.sampleshot import (
     load_sigsbee,
     _find_assets_dir
 )
-from shotgen.models import resample_velocity_model
-from shotgen.io import SegyIO
+from shotgen.utils import generate_simulation_dir_name
 
 
 def _load_velocity_model_core(cfg: dict):
@@ -109,6 +108,7 @@ def main():
     parser.add_argument("--ms", "--ntime", type=float, help="Simulation duration (ms)")
     parser.add_argument("--engine", type=str, default="pylops", help="Simulation engine ('pylops' or 'devito')")
     parser.add_argument("--device", type=str, default="cpu", help="Target device ('cpu', 'cuda', etc.)")
+    parser.add_argument("--fs-ms", "--fs_ms", dest="fs_ms", type=float, help="Sampling rate in milliseconds (float)")
 
     args = parser.parse_args()
 
@@ -136,6 +136,8 @@ def main():
         cfg["engine"] = args.engine
     if args.device:
         cfg["device"] = args.device
+    if args.fs_ms is not None:
+        cfg["fs_ms"] = args.fs_ms
 
     cli_enabled = args.cli or cfg.get("cli", False)
 
@@ -146,6 +148,9 @@ def main():
     ms = float(cfg.get("ms", 300.0))
     engine = str(cfg.get("engine", "pylops"))
     device = str(cfg.get("device", "cpu"))
+    fs_ms = cfg.get("fs_ms", None)
+    if fs_ms is not None:
+        fs_ms = float(fs_ms)
 
     shot = ShotRecord(
         nx=nx,
@@ -157,11 +162,16 @@ def main():
         f0=f0,
         engine=engine,
         device=device,
+        fs_ms=fs_ms,
     )
     shot.set_model(vel)
     shot.run(ms=ms)
 
-    output_dir = Path(cfg.get("output_dir", "data/core_simulation_output"))
+    cfg.update({"nx": nx, "nz": nz, "dx": dx, "dz": dz, "n_sources": n_sources, "n_receivers": n_receivers, "f0": f0, "ms": ms})
+    if "output_dir" in cfg:
+        output_dir = Path(cfg["output_dir"])
+    else:
+        output_dir = generate_simulation_dir_name(cfg, base_dir="data")
     shot.save_shot(str(output_dir))
     print(f"[shotgen-core CLI] Wavefield simulation complete! Saved to: {output_dir}")
 
