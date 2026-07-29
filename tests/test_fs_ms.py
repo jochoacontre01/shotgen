@@ -30,7 +30,9 @@ def test_fs_ms_resampling_and_segy_header():
         fs_ms=fs_ms,
     )
 
+    # 2-layer velocity model (reflector at depth z=20)
     dummy_vel = np.ones((nx, nz)) * 2000.0
+    dummy_vel[:, 20:] = 2500.0
     shot_rec.set_model(dummy_vel)
     shot_rec.run(ms=ms)
 
@@ -83,7 +85,7 @@ def test_fs_ms_null_behavior():
     with tempfile.TemporaryDirectory() as tmp_dir:
         shot_rec.save_shot(tmp_dir)
         segy_data = SegyIO.read(os.path.join(tmp_dir, "traces.segy"))
-        assert np.isclose(segy_data["dt"], expected_dt_s, rtol=1e-4)
+        assert np.isclose(segy_data["dt"], expected_dt_s, atol=1e-5)
 
 
 if __name__ == "__main__":

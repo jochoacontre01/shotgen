@@ -441,6 +441,8 @@ class ShotRecord:
 
         nelements_time = self.shot_run.shape[-1]
         self.time_vector = np.linspace(0, ms, nelements_time) * (1e-3)
+        if len(self.time_vector) > 1:
+            self.dt = self.time_vector[1] - self.time_vector[0]
         return self.shot_run
 
     def apply_gain(self, factor=2):
