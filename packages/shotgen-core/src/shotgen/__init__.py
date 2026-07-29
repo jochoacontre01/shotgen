@@ -5,6 +5,8 @@ from .models import GeoModel
 from .migration import KirchhoffMigration, KirchhoffModel, load_dataset_dir
 from .runner import run_gpu_simulation
 
+from .utils import generate_simulation_dir_name
+
 __all__ = [
     "ShotRecord",
     "LoadShotRecord",
@@ -20,6 +22,7 @@ __all__ = [
     "load_dataset_dir",
     "run_gpu_simulation",
     "map_coordinate_to_index",
+    "generate_simulation_dir_name",
 ]
 
 

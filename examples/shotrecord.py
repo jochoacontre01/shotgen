@@ -19,6 +19,7 @@ from shotgen.sampleshot import (
     _find_assets_dir,
     ShotRecord
 )
+from shotgen.utils import generate_simulation_dir_name
 
 
 def parse_velocity_model(cfg: dict):
@@ -145,7 +146,11 @@ def main():
 
     shot_run, us, wavelet = solver.run(ms=ms, save_wavefield=cfg.get("save_wavefield", False))
 
-    output_dir = Path(cfg.get("output_dir", "data/example_simulation_output"))
+    cfg.update({"nx": nx, "nz": nz, "dx": dx, "dz": dz, "n_sources": n_sources, "n_receivers": n_receivers, "f0": f0, "ms": ms})
+    if "output_dir" in cfg:
+        output_dir = Path(cfg["output_dir"])
+    else:
+        output_dir = generate_simulation_dir_name(cfg, base_dir="data")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     n_rec_actual = receivers.shape[1] if receivers.ndim == 3 else len(receivers)
