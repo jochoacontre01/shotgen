@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import subprocess
+from shotgen.sampleshot import load_sigsbee
 
 def main():
     parser = argparse.ArgumentParser(description="Read and plot velocity model data.")
@@ -17,6 +18,11 @@ def main():
     # Plotting
     dx = 12.5
     dz = 6.25
+
+    data, metadata = load_sigsbee()
+    data = data.astype(np.float32)
+    nx, nz = data.shape
+    dx, dz = metadata["dx"], metadata["dz"]
     extent = (0, nx * dx, nz * dz, 0)
 
     plt.figure(figsize=(10, 5))
