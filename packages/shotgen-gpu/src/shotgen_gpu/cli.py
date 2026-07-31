@@ -174,19 +174,70 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
     float_type_str = str(cfg.get("float_type", "float32")).lower()
     float_type = np.float64 if "64" in float_type_str else np.float32
 
+    # Crop model if max_size is specified
+    max_size = cfg.get("max_size")
+    if max_size is not None:
+        max_x, max_z = float(max_size[0]), float(max_size[1])
+        x_start = max(0, min(int(np.round(origin[0] / dx)), vel.shape[0]))
+        x_end = max(x_start, min(x_start + int(np.round(max_x / dx)), vel.shape[0]))
+        z_start = max(0, min(int(np.round(origin[1] / dz)), vel.shape[1]))
+        z_end = max(z_start, min(z_start + int(np.round(max_z / dz)), vel.shape[1]))
+        if x_end > x_start and z_end > z_start:
+            vel = vel[x_start:x_end, z_start:z_end]
+            nx = vel.shape[0]
+            nz = vel.shape[1]
+
+    # Honor src_origin and rec_origin as absolute physical positions
+
     if "sources" in cfg and cfg["sources"] is not None:
         sources = np.array(cfg["sources"], dtype=float_type)
     else:
-        sx = origin[0] + np.linspace(dx * 2, (nx - 2) * dx, n_sources, dtype=float_type)
-        sz = np.ones(n_sources, dtype=float_type) * origin[1]
-        sources = np.vstack([sx, sz]).T
+        sources = None
 
     if "receivers" in cfg and cfg["receivers"] is not None:
         receivers = np.array(cfg["receivers"], dtype=float_type)
     else:
-        rx = origin[0] + np.linspace(dx, (nx - 1) * dx, n_receivers, dtype=float_type)
-        rz = np.ones(n_receivers, dtype=float_type) * origin[1]
-        receivers = np.vstack([rx, rz]).T
+        receivers = None
+
+    shot_rec = ShotRecord(
+        nx=nx,
+        nz=nz,
+        dx=dx,
+        dz=dz,
+        n_receivers=n_receivers,
+        n_sources=n_sources,
+        f0=f0,
+        src_origin=src_origin,
+        rec_origin=rec_origin,
+        origin=origin,
+        meters_per_cell=meters_per_cell,
+        fd_order=fd_order,
+        n_damping=n_damping,
+        gather=gather,
+        group_offset=group_offset,
+        shot_offset=shot_offset,
+        smooth=smooth,
+        snr=snr,
+        engine="devito",
+        float_type=float_type,
+        device=cfg.get("device", "auto"),
+        fs_ms=fs_ms,
+    )
+    shot_rec.set_model(vel)
+
+    if sources is not None:
+        shot_rec.sources = sources
+    else:
+        sources = shot_rec.sources
+
+    if receivers is not None:
+        shot_rec.recs = receivers
+    else:
+        receivers = shot_rec.recs
+
+    # Display velocity model before starting simulation if cli is enabled
+    if cli_enabled:
+        shot_rec.show_model(cli=True)
 
     solver = AcousticWaveSolverWrapper(
         nx=nx,
@@ -235,32 +286,8 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
     n_rec_actual = receivers.shape[1] if receivers.ndim == 3 else len(receivers)
     n_src_actual = len(sources)
 
-    # Save SEGY and metadata using SegyIO via ShotRecord
-    shot_rec = ShotRecord(
-        nx=nx,
-        nz=nz,
-        dx=dx,
-        dz=dz,
-        n_receivers=n_rec_actual,
-        n_sources=n_src_actual,
-        f0=f0,
-        src_origin=src_origin,
-        rec_origin=rec_origin,
-        origin=origin,
-        meters_per_cell=meters_per_cell,
-        fd_order=fd_order,
-        n_damping=n_damping,
-        gather=gather,
-        group_offset=group_offset,
-        shot_offset=shot_offset,
-        smooth=smooth,
-        snr=snr,
-        engine="devito",
-        float_type=float_type,
-        device=cfg.get("device", "auto"),
-        fs_ms=fs_ms,
-    )
-    shot_rec.vel = vel
+    shot_rec.n_receivers = n_rec_actual
+    shot_rec.n_sources = n_src_actual
     shot_rec.v0 = gaussian_filter(vel, sigma=smooth)
     shot_rec.shot_run = shot_run
 

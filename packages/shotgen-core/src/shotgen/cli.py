@@ -187,8 +187,20 @@ def main():
     src_origin = tuple(cfg.get("src_origin", [0.0, 0.0]))
     rec_origin = tuple(cfg.get("rec_origin", [0.0, 0.0]))
 
-    float_type_str = str(cfg.get("float_type", "float32")).lower()
-    float_type = np.float64 if "64" in float_type_str else np.float32
+    # Crop model if max_size is specified
+    max_size = cfg.get("max_size")
+    if max_size is not None:
+        max_x, max_z = float(max_size[0]), float(max_size[1])
+        x_start = max(0, min(int(np.round(origin[0] / dx)), vel.shape[0]))
+        x_end = max(x_start, min(x_start + int(np.round(max_x / dx)), vel.shape[0]))
+        z_start = max(0, min(int(np.round(origin[1] / dz)), vel.shape[1]))
+        z_end = max(z_start, min(z_start + int(np.round(max_z / dz)), vel.shape[1]))
+        if x_end > x_start and z_end > z_start:
+            vel = vel[x_start:x_end, z_start:z_end]
+            nx = vel.shape[0]
+            nz = vel.shape[1]
+
+    # Honor src_origin and rec_origin as absolute physical positions
 
     shot = ShotRecord(
         nx=nx,
@@ -215,6 +227,9 @@ def main():
         fs_ms=fs_ms,
     )
     shot.set_model(vel)
+    if cli_enabled:
+        shot.show_model(cli=True)
+
     shot.run(ms=ms)
 
     cfg.update({

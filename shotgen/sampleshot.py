@@ -256,15 +256,15 @@ class ShotRecord:
         if hasattr(self, 'sources') and self.sources is not None:
             local_sources = self.sources - np.array(self.origin)
             if np.any(local_sources[..., 0] < 0.0) or np.any(local_sources[..., 0] > max_x):
-                raise ValueError(f"Source coordinate X is outside model bounds [0, {max_x}] relative to the origin.")
+                raise ValueError(f"Source coordinate X is outside model bounds [{self.origin[0]}, {self.origin[0] + max_x}].")
             if np.any(local_sources[..., 1] < 0.0) or np.any(local_sources[..., 1] > max_z):
-                raise ValueError(f"Source coordinate Z is outside model bounds [0, {max_z}] relative to the origin.")
+                raise ValueError(f"Source coordinate Z is outside model bounds [{self.origin[1]}, {self.origin[1] + max_z}].")
         if hasattr(self, 'recs') and self.recs is not None:
             local_recs = self.recs - np.array(self.origin)
-            if np.any(local_recs[..., 0] < 0.0) or np.any(local_recs[..., 0] > max_x):
-                raise ValueError(f"Receiver coordinate X is outside model bounds [0, {max_x}] relative to the origin.")
+            if np.any(local_recs[..., 0] < 0.0):
+                raise ValueError(f"Receiver coordinate X is before model origin {self.origin[0]}.")
             if np.any(local_recs[..., 1] < 0.0) or np.any(local_recs[..., 1] > max_z):
-                raise ValueError(f"Receiver coordinate Z is outside model bounds [0, {max_z}] relative to the origin.")
+                raise ValueError(f"Receiver coordinate Z is outside model bounds [{self.origin[1]}, {self.origin[1] + max_z}].")
 
     def __init__(
         self,
@@ -391,8 +391,8 @@ class ShotRecord:
                 noise_std = rms / safe_snr
                 noise = np.random.standard_normal(size=self.shot_run.shape).astype(self.float_type)
                 self.shot_run = self.shot_run + (noise * noise_std)
-        self.src_origin = src_origin
-        self.rec_origin = rec_origin
+        self.src_origin = (max(src_origin[0], origin[0]), max(src_origin[1], origin[1]))
+        self.rec_origin = (max(rec_origin[0], origin[0]), max(rec_origin[1], origin[1]))
         
         if self.gather == "common shot":
             initial_nx = int(self.nx)
@@ -441,7 +441,6 @@ class ShotRecord:
         self.validate_spatial_bounds()
     
     def _set_common_shot(self):
-        
         rec_span = (self.n_receivers-1) * self.group_offset
         src_span = (self.n_sources-1) * self.shot_offset
         
@@ -457,23 +456,28 @@ class ShotRecord:
             rx_list.append(np.vstack([rec_x, rec_z]).T)
         
         self.recs = np.array(rx_list)
-        
-        # Shift by self.origin to get absolute coordinates
-        self.sources[..., 0] += self.origin[0]
-        self.sources[..., 1] += self.origin[1]
-        self.recs[..., 0] += self.origin[0]
-        self.recs[..., 1] += self.origin[1]
-                
+
     def set_model(self, model):
-        if model.shape[0] < self.nx:
-            warnings.warn(
-                "\nThe input model does not match the internal model size"
-                f"\nExpected ({int(self.nx)}, {int(self.nz)}) but got {model.shape}"
-                "\nThe input model will be padded"
-            )
-        
-            diff = self.nx - model.shape[0]
-            model = np.pad(model, ((0, int(diff)), (0,0)), mode="edge")
+        if hasattr(self, 'recs') and self.recs is not None:
+            max_rec_x = float(np.max(self.recs[..., 0]))
+            required_nx = int(np.ceil((max_rec_x - self.origin[0]) / self.dx))
+            if required_nx > model.shape[0]:
+                diff_x = required_nx - model.shape[0]
+                warnings.warn(
+                    f"\nThe trailing receivers extend past the model grid."
+                    f"\nPadding velocity model by {diff_x} cells along X edge using edge mode.",
+                    category=UserWarning
+                )
+                model = np.pad(model, ((0, diff_x), (0, 0)), mode="edge")
+                self.nx = model.shape[0]
+
+        if model.shape[0] < self.nx or model.shape[1] < self.nz:
+            diff_x = max(0, self.nx - model.shape[0])
+            diff_z = max(0, self.nz - model.shape[1])
+            model = np.pad(model, ((0, diff_x), (0, diff_z)), mode="edge")
+            self.nx = model.shape[0]
+            self.nz = model.shape[1]
+
         self.vel = model
         self._model_ready = True
         
@@ -486,7 +490,7 @@ class ShotRecord:
         ValueError
             If no velocity model has been initialized yet.
         """
-        if not self._model_ready:
+        if not self._model_ready and (not hasattr(self, "vel") or self.vel is None):
             raise ValueError("You need to create a model first")
         else:
             if self.gather == "common shot":
@@ -496,18 +500,21 @@ class ShotRecord:
                 recs_4plot_x = self.recs[:, 0]
                 recs_4plot_z = self.recs[:, 1]
                 
+            kwargs.setdefault("cmap", "turbo")
+            kwargs.setdefault("aspect", "auto")
+
             plt.figure(figsize=(10, 5))
             extent = (self.origin[0], self.origin[0] + self.nx * self.dx, self.origin[-1] + self.nz * self.dz, self.origin[-1])
             im = plt.imshow(self.vel.T, extent=extent, **kwargs)
             if draw_recs:
-                plt.scatter(recs_4plot_x, recs_4plot_z, marker="v", s=150, c="b", edgecolors="k")
+                plt.scatter(recs_4plot_x, recs_4plot_z, marker="v", s=150, c="w", edgecolors="k")
                 plt.scatter(self.sources[:, 0], self.sources[:, 1], marker="*", s=150, c="r", edgecolors="k")
             cb = plt.colorbar(im)
             cb.set_label("[m/s]")
-            plt.gca().set_aspect("equal")
+            plt.gca().set_aspect("auto")
             plt.axis("tight")
             plt.xlabel("x [m]"), plt.ylabel("z [m]")
-            plt.title("Velocity")
+            plt.title("velocity model")
             plt.xlim(self.origin[0], self.origin[0] + self.nx * self.dx)
             plt.tight_layout()
             if hq:
@@ -518,9 +525,9 @@ class ShotRecord:
                 # subprocess.run("rm img.png".split())
             if cli:
                 plt.savefig("img.png", dpi=100)
-                subprocess.run("chafa -w 9 img.png".split())
-                time.sleep(0.5)
-                subprocess.run("rm img.png".split())
+                plt.close()
+                subprocess.run(["chafa", "img.png"])
+                subprocess.run(["rm", "img.png"])
             else:
                 plt.show()
         
