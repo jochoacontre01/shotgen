@@ -5,24 +5,24 @@
     "float_type": "float32",
     "dx": 12.5,
     "dz": 6.25,
-    "max_size": [30000.0, 12000.0],
-    "n_sources": 1,
-    "n_receivers": 564,
+    "max_size": [25000.0, 12000.0],
+    "n_sources": 10,
+    "n_receivers": 600,
     "ms": 12000.0,
     "f0": 20.0,
     "src_origin": [
-        30000.0,
+        0.0,
         12.5
       ],
     "rec_origin": [
-        30000.0,
+        50.0,
         12.5
       ],
     "origin": [
-        23000.0,
+        0.0,
         0.0
       ],
-    "group_offset": 12.5,
+    "group_offset": 25.0,
     "shot_offset": 50.0,
     "gather": "common shot",
     "smooth": 5,
@@ -31,7 +31,7 @@
     "n_damping": 256,
     "engine": "pylops",
     "device": "auto",
-    "fs_ms": 2.0,
+    "fs_ms": 6.0,
     "save_wavefield": false
 }
 
