@@ -3,23 +3,23 @@
     "velocity_model": "bpsalt",
     "meters_per_cell": 1.0,
     "float_type": "float32",
-    "dx": 10,
-    "dz": 10,
-    "max_size": [30000.0, 8000.0],
+    "dx": 12.5,
+    "dz": 6.25,
+    "max_size": [30000.0, 12000.0],
     "n_sources": 1,
     "n_receivers": 564,
-    "ms": 7000.0,
+    "ms": 12000.0,
     "f0": 20.0,
     "src_origin": [
-        0.0,
-        2.0
+        30000.0,
+        12.5
       ],
     "rec_origin": [
-        0.0,
-        10.0
+        30000.0,
+        12.5
       ],
     "origin": [
-        0.0,
+        23000.0,
         0.0
       ],
     "group_offset": 12.5,
