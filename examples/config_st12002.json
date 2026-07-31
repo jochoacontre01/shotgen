@@ -26,7 +26,7 @@
     "shot_offset": 50.0,
     "gather": "common shot",
     "smooth": 5,
-    "snr": 0.1,
+    "snr": null,
     "fd_order": 50,
     "n_damping": 256,
     "engine": "pylops",
