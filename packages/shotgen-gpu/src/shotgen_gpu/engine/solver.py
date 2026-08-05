@@ -62,8 +62,10 @@ class AcousticWaveSolverWrapper:
         smooth: float = 5.0,
         device: str = "auto",
         float_type=np.float32,
+        verbose: bool = False,
     ):
-        self.device = configure_devito_device(device)
+        self.verbose = verbose
+        self.device = configure_devito_device(device, verbose=verbose)
         self.nx = nx
         self.nz = nz
         self.dx = dx

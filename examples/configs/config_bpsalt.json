@@ -5,21 +5,21 @@
     "float_type": "float32",
     "dx": 12.5,
     "dz": 6.25,
-    "max_size": [25000.0, 12000.0],
-    "n_sources": 10,
+    "max_size": [30000.0, 11875.0],
+    "n_sources": 250,
     "n_receivers": 600,
     "ms": 12000.0,
-    "f0": 20.0,
+    "f0": 15.0,
     "src_origin": [
-        0.0,
+        23100.0,
         12.5
       ],
     "rec_origin": [
-        50.0,
+        23150.0,
         12.5
       ],
     "origin": [
-        0.0,
+        23000.0,
         0.0
       ],
     "group_offset": 25.0,

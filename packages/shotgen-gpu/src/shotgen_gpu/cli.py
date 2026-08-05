@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import argparse
+import time
 import numpy as np
 import h5py
 from pathlib import Path
@@ -118,6 +119,7 @@ def main():
     parser = argparse.ArgumentParser(description="shotgen-gpu: Devito/OpenACC wavefield propagation & RTM CLI")
     parser.add_argument("--config", "-c", type=str, required=True, help="Path to JSON configuration file")
     parser.add_argument("--cli", action="store_true", help="Display the first shot record on the terminal using chafa after simulation")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Display GPU runtime and verbose simulation output when complete")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -128,8 +130,10 @@ def main():
     with open(config_path, "r") as f:
         cfg = json.load(f)
 
+    verbose_enabled = args.verbose or cfg.get("verbose", False)
+
     device = cfg.get("device", "auto")
-    configured_device = configure_devito_device(device)
+    configured_device = configure_devito_device(device, verbose=verbose_enabled)
     print(f"[shotgen-gpu CLI] Configured device: {configured_device.upper()}")
 
     task_type = cfg.get("task", "simulation")
@@ -137,9 +141,9 @@ def main():
     cli_enabled = args.cli or cfg.get("cli", False)
 
     if task_type == "simulation":
-        _run_simulation_cli(cfg, cli_enabled=cli_enabled)
+        _run_simulation_cli(cfg, cli_enabled=cli_enabled, verbose=verbose_enabled)
     elif task_type == "rtm":
-        _run_rtm_cli(cfg)
+        _run_rtm_cli(cfg, verbose=verbose_enabled)
     else:
         print(f"Error: Unknown task type '{task_type}' in config", file=sys.stderr)
         sys.exit(1)
@@ -151,7 +155,8 @@ def _parse_val(val, default, val_type=float):
     return val_type(val)
 
 
-def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
+def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = False):
+    t_start = time.time()
     vel, nx, nz, dx, dz = _load_velocity_model(cfg)
 
     n_sources = _parse_val(cfg.get("n_sources"), 2, int)
@@ -222,6 +227,7 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
         float_type=float_type,
         device=cfg.get("device", "auto"),
         fs_ms=fs_ms,
+        verbose=verbose,
     )
     shot_rec.set_model(vel)
 
@@ -254,6 +260,7 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
         smooth=smooth,
         device=cfg.get("device", "auto"),
         float_type=float_type,
+        verbose=verbose,
     )
 
     shot_run, us, wavelet = solver.run(ms=ms, save_wavefield=cfg.get("save_wavefield", False))
@@ -334,14 +341,18 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False):
         f.create_dataset("ms", data=ms)
         f.create_dataset("f0", data=f0)
 
+    t_elapsed = time.time() - t_start
     print(f"[shotgen-gpu CLI] Wavefield simulation complete! SEGY and HDF5 written to: {output_dir}")
+    if verbose:
+        print(f"[shotgen-gpu CLI] GPU runtime: {t_elapsed:.3f} s")
 
     if cli_enabled:
         shot_rec.show_shot(cli=True, source_idx=0)
 
 
 
-def _run_rtm_cli(cfg: dict):
+def _run_rtm_cli(cfg: dict, verbose: bool = False):
+    t_start = time.time()
     dataset_dir = cfg.get("dataset_dir")
     nbl = cfg.get("nbl", 40)
     space_order = cfg.get("space_order", 4)
@@ -352,6 +363,7 @@ def _run_rtm_cli(cfg: dict):
         nbl=nbl,
         space_order=space_order,
         device=device,
+        verbose=verbose,
     )
     image = rtm.run(save_wavefield=False)
 
@@ -359,7 +371,10 @@ def _run_rtm_cli(cfg: dict):
     output_dir.mkdir(parents=True, exist_ok=True)
     out_file = output_dir / "rtm_image.npy"
     np.save(out_file, image)
+    t_elapsed = time.time() - t_start
     print(f"[shotgen-gpu CLI] RTM complete! Image written to: {out_file}")
+    if verbose:
+        print(f"[shotgen-gpu CLI] GPU runtime: {t_elapsed:.3f} s")
 
 
 if __name__ == "__main__":

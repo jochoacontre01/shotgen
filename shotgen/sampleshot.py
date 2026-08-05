@@ -20,7 +20,7 @@ import importlib.machinery
 os.environ["ACC_DEVICE_TYPE"] = "nvidia"
 os.environ["ACC_DEVICE_NUM"] = "0"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["NVCOMPILER_ACC_TIME"] = "1"
+os.environ["NVCOMPILER_ACC_TIME"] = "0"
 os.environ["OMP_TARGET_OFFLOAD"] = "DISABLED"
 os.environ["NVCOMPILER_ACC_NOTIFY"] = "0"
 

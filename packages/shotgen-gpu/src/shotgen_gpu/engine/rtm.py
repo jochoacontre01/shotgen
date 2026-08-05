@@ -87,9 +87,11 @@ class ReverseTimeMigration:
         time_order: int = 2,
         dtype=np.float32,
         device="auto",
+        verbose: bool = False,
         **kwargs,
     ):
-        configure_devito_device(device)
+        self.verbose = verbose
+        configure_devito_device(device, verbose=verbose)
         if dataset_dir is not None:
             vp, sources, receivers, shots, time, f0, dx, dz = load_dataset_dir_gpu(dataset_dir, require_f0=True, provided_f0=f0)
             spacing = (dx, dz)

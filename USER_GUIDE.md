@@ -163,10 +163,12 @@ You can execute GPU wave propagation directly from the command line using a JSON
 #### Running the CLI:
 ```bash
 shotgen-gpu --config examples/test_config.json
+# To display GPU runtime profiling stats and verbose simulation details:
+shotgen-gpu --config examples/test_config.json -v
 ```
 or via python:
 ```bash
-python3 -m shotgen_gpu.cli --config examples/test_config.json
+python3 -m shotgen_gpu.cli --config examples/test_config.json -v
 ```
 
 ---

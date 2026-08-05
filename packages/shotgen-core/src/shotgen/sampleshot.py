@@ -45,13 +45,13 @@ def detect_device():
     return "cpu"
 
 
-def configure_devito_device(device="auto", platform=None, compiler=None, language=None):
+def configure_devito_device(device="auto", platform=None, compiler=None, language=None, verbose=False):
     """
     Configures Devito environment variables and runtime settings if shotgen-gpu is installed.
     """
     try:
         from shotgen_gpu.config import configure_devito_device as _config_gpu
-        return _config_gpu(device=device, platform=platform, compiler=compiler, language=language)
+        return _config_gpu(device=device, platform=platform, compiler=compiler, language=language, verbose=verbose)
     except ImportError:
         return "cpu"
 
@@ -112,11 +112,13 @@ class ShotRecord:
         engine="pylops",
         float_type=np.float32,
         device="auto",
-        fs_ms=None
+        fs_ms=None,
+        verbose=False
     ):
         self.engine = engine
         self.float_type = float_type
         self.fs_ms = fs_ms
+        self.verbose = verbose
 
         # Device detection and setup
         if engine.lower() == "pylops" and (device == "auto" or device is None):
@@ -136,7 +138,7 @@ class ShotRecord:
         else:
             raise ValueError(f"Invalid device '{device}'. Expected 'auto', 'cpu', or 'cuda'.")
 
-        self.device = configure_devito_device(self.device)
+        self.device = configure_devito_device(self.device, verbose=self.verbose)
 
         self.nx = nx
         self.nz = nz

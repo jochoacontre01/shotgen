@@ -26,7 +26,7 @@ _disable_torch_import()
 os.environ["ACC_DEVICE_TYPE"] = "nvidia"
 os.environ["ACC_DEVICE_NUM"] = "0"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["NVCOMPILER_ACC_TIME"] = "1"
+os.environ["NVCOMPILER_ACC_TIME"] = "0"
 os.environ["OMP_TARGET_OFFLOAD"] = "DISABLED"
 os.environ["NVCOMPILER_ACC_NOTIFY"] = "0"
 
@@ -96,10 +96,15 @@ def _check_cuda_lib():
     return False
 
 
-def configure_devito_device(device="auto", platform=None, compiler=None, language=None):
+def configure_devito_device(device="auto", platform=None, compiler=None, language=None, verbose=False):
     """
     Configures Devito environment variables and runtime settings for CUDA GPU or CPU.
     """
+    if verbose:
+        os.environ["NVCOMPILER_ACC_TIME"] = "1"
+    else:
+        os.environ["NVCOMPILER_ACC_TIME"] = "0"
+
     if device == "auto" or device is None:
         device = detect_device()
 
@@ -119,7 +124,7 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
                 "Falling back to CPU execution.",
                 category=UserWarning
             )
-            return configure_devito_device("cpu")
+            return configure_devito_device("cpu", verbose=verbose)
 
         target_platform = platform if platform else "nvidiaX"
         target_compiler = gpu_compiler
@@ -139,7 +144,7 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             configuration["language"] = target_language
         except Exception as e:
             warnings.warn(f"Failed to set Devito GPU configuration ({e}). Falling back to CPU.", category=UserWarning)
-            return configure_devito_device("cpu")
+            return configure_devito_device("cpu", verbose=verbose)
         device = "cuda"
     else:
         target_platform = platform if platform else "intel64"
