@@ -48,6 +48,63 @@ def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None):
     return vp, sources, receivers, shots, time, f0, dx, dz
 
 
+def _process_single_shot(
+    si: int,
+    source: np.ndarray,
+    receivers: np.ndarray,
+    shot_data: np.ndarray,
+    vp_shape: tuple,
+    origin: tuple,
+    spacing: tuple,
+    time: np.ndarray,
+    traveltime_dict: dict,
+    X: np.ndarray = None,
+    Z: np.ndarray = None,
+) -> np.ndarray:
+    """Computes depth migration image contribution for a single shot."""
+    nx, nz = vp_shape
+    eps = 1e-4
+
+    if X is None or Z is None:
+        x_coords = origin[0] + np.arange(nx) * spacing[0]
+        z_coords = origin[1] + np.arange(nz) * spacing[1]
+        X, Z = np.meshgrid(x_coords, z_coords, indexing='ij')
+
+    shot_output = np.zeros(vp_shape, dtype=np.float64)
+
+    sx_idx = int(np.clip(np.round(source[0]), 0, nx - 1))
+    sz_idx = int(np.clip(np.round(source[1]), 0, nz - 1))
+    sx = origin[0] + source[0] * spacing[0]
+    sz = origin[1] + source[1] * spacing[1]
+
+    Rs = np.sqrt((X - sx)**2 + (Z - sz)**2) + eps
+    traveltime_s = traveltime_dict[(sx_idx, sz_idx)]
+
+    n_receivers = receivers.shape[1] if receivers.ndim == 3 else receivers.shape[0]
+
+    for ri in range(n_receivers):
+        rec_coord = receivers[si, ri] if receivers.ndim == 3 else receivers[ri]
+        rx_idx = int(np.clip(np.round(rec_coord[0]), 0, nx - 1))
+        rz_idx = int(np.clip(np.round(rec_coord[1]), 0, nz - 1))
+        traveltime_r = traveltime_dict[(rx_idx, rz_idx)]
+        total_traveltime = traveltime_s + traveltime_r
+
+        trace = shot_data[ri]
+
+        rx = origin[0] + rec_coord[0] * spacing[0]
+        rz = origin[1] + rec_coord[1] * spacing[1]
+
+        Rr = np.sqrt((X - rx)**2 + (Z - rz)**2) + eps
+        spreading = 1.0 / np.sqrt(Rs * Rr)
+        obliquity = np.abs(Z - rz) / Rr
+        weight = spreading * obliquity
+
+        amplitudes = np.interp(total_traveltime.ravel(), time, trace, left=0.0, right=0.0).reshape(total_traveltime.shape)
+        shot_output += amplitudes * weight
+
+    return shot_output
+
+
 class KirchhoffModel:
     """Lightweight model container representing grid shape and origin for Kirchhoff migration."""
     def __init__(self, shape, origin=(0.0, 0.0)):
@@ -70,6 +127,8 @@ class KirchhoffMigration:
         time: np.ndarray = None,
         spacing: tuple = (1.0, 1.0),
         dataset_dir: str = None,
+        n_jobs: int = -1,
+        backend: str = "threading",
     ):
         origin = (0.0, 0.0)
         if dataset_dir is not None:
@@ -97,6 +156,8 @@ class KirchhoffMigration:
         self.time = time
         self.spacing = spacing
         self.origin = origin
+        self.n_jobs = n_jobs
+        self.backend = backend
         self.model = KirchhoffModel(shape=self.vp.shape, origin=self.origin)
 
         self._gather_unique_coords()
@@ -125,7 +186,7 @@ class KirchhoffMigration:
         self.unique_coords = list(set(all_coords))
 
     def _setup_solver(self):
-        computed_fields = Parallel(n_jobs=-1)(
+        computed_fields = Parallel(n_jobs=self.n_jobs, backend=self.backend)(
             delayed(self.compute_single_traveltime_field)(c, self.vp, self.spacing[0], self.spacing[1])
             for c in self.unique_coords
         )
@@ -139,43 +200,42 @@ class KirchhoffMigration:
         phi[idx_x, idx_z] = 0
         return skfmm.travel_time(phi, vp, dx=[dx, dz])
 
-    def run(self):
+    def run(self, n_jobs: int = None, backend: str = None, show_progress: bool = True):
+        effective_n_jobs = self.n_jobs if n_jobs is None else n_jobs
+        effective_backend = self.backend if backend is None else backend
+
         nx, nz = self.vp.shape
         x_coords = self.origin[0] + np.arange(nx) * self.spacing[0]
         z_coords = self.origin[1] + np.arange(nz) * self.spacing[1]
         X, Z = np.meshgrid(x_coords, z_coords, indexing='ij')
-        eps = 1e-4
 
-        for si, source in enumerate(tqdm(self.sources, desc="Kirchhoff PSDM Source", total=len(self.sources))):
-            sx_idx = int(np.clip(np.round(source[0]), 0, nx - 1))
-            sz_idx = int(np.clip(np.round(source[1]), 0, nz - 1))
-            sx = self.origin[0] + source[0] * self.spacing[0]
-            sz = self.origin[1] + source[1] * self.spacing[1]
+        n_sources = len(self.sources)
 
-            Rs = np.sqrt((X - sx)**2 + (Z - sz)**2) + eps
-            traveltime_s = self.traveltime_dict[(sx_idx, sz_idx)]
+        if effective_n_jobs == 1:
+            shot_images = []
+            iterator = range(n_sources)
+            if show_progress:
+                iterator = tqdm(iterator, desc="Kirchhoff PSDM Source", total=n_sources)
+            for si in iterator:
+                img = _process_single_shot(
+                    si, self.sources[si], self.receivers, self.shots[si],
+                    self.vp.shape, self.origin, self.spacing, self.time,
+                    self.traveltime_dict, X, Z
+                )
+                shot_images.append(img)
+        else:
+            source_range = tqdm(range(n_sources), desc="Kirchhoff PSDM Source", total=n_sources) if show_progress else range(n_sources)
+            shot_images = Parallel(n_jobs=effective_n_jobs, backend=effective_backend)(
+                delayed(_process_single_shot)(
+                    si, self.sources[si], self.receivers, self.shots[si],
+                    self.vp.shape, self.origin, self.spacing, self.time,
+                    self.traveltime_dict, X, Z
+                )
+                for si in source_range
+            )
 
-            n_receivers = self.receivers.shape[1] if self.receivers.ndim == 3 else self.receivers.shape[0]
-
-            for ri in range(n_receivers):
-                rec_coord = self.receivers[si, ri] if self.receivers.ndim == 3 else self.receivers[ri]
-                rx_idx = int(np.clip(np.round(rec_coord[0]), 0, nx - 1))
-                rz_idx = int(np.clip(np.round(rec_coord[1]), 0, nz - 1))
-                traveltime_r = self.traveltime_dict[(rx_idx, rz_idx)]
-                total_traveltime = traveltime_s + traveltime_r
-
-                trace = self.shots[si, ri]
-
-                rx = self.origin[0] + rec_coord[0] * self.spacing[0]
-                rz = self.origin[1] + rec_coord[1] * self.spacing[1]
-
-                Rr = np.sqrt((X - rx)**2 + (Z - rz)**2) + eps
-                spreading = 1.0 / np.sqrt(Rs * Rr)
-                obliquity = np.abs(Z - rz) / Rr
-                weight = spreading * obliquity
-
-                amplitudes = np.interp(total_traveltime.ravel(), self.time, trace, left=0.0, right=0.0).reshape(total_traveltime.shape)
-                self.output += amplitudes * weight
-
+        self.output = np.sum(shot_images, axis=0)
         return self.output
+
+
 

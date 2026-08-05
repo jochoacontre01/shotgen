@@ -272,3 +272,115 @@ def test_rtm_source_coordinates_updating(small_migration_dataset):
         # The coordinates in recorded_coords should match rtm.sources[i, :]
         assert np.allclose(recorded_coords[i][0], rtm.sources[i], atol=1e-3)
 
+
+def test_kirchhoff_parallel_concurrency_and_equality():
+    """Tests that KirchhoffMigration processes shots concurrently in parallel,
+
+    reaching peak concurrency equal to number of shots (when n_jobs >= n_shots),
+    and produces results numerically identical to sequential execution.
+    """
+    import time
+    import threading
+    import shotgen.migration.kirchhoff as km_module
+
+    nx, nz = 100, 100
+    vp = np.ones((nx, nz)) * 2000.0
+    vp[:, 50:] = 2500.0
+
+    n_sources = 4
+    n_receivers = 8
+    sources = np.zeros((n_sources, 2))
+    sources[:, 0] = np.linspace(10, 90, n_sources)
+    sources[:, 1] = 5.0
+
+    receivers = np.zeros((n_sources, n_receivers, 2))
+    for s in range(n_sources):
+        receivers[s, :, 0] = np.linspace(5, 95, n_receivers)
+        receivers[s, :, 1] = 5.0
+
+    time_axis = np.linspace(0, 0.5, 400)
+    shots = np.random.randn(n_sources, n_receivers, 400)
+
+    migrator = KirchhoffMigration(
+        vp=vp, sources=sources, receivers=receivers, shots=shots, time=time_axis, spacing=(10.0, 10.0), n_jobs=4
+    )
+
+    # 1. Run sequential
+    img_seq = migrator.run(n_jobs=1, show_progress=False)
+
+    # 2. Run parallel with concurrency tracking
+    active_count = 0
+    max_concurrent = 0
+    lock = threading.Lock()
+
+    original_process = km_module._process_single_shot
+
+    def tracked_process(*args, **kwargs):
+        nonlocal active_count, max_concurrent
+        with lock:
+            active_count += 1
+            if active_count > max_concurrent:
+                max_concurrent = active_count
+        time.sleep(0.02)  # brief pause to ensure overlap across threads
+        try:
+            return original_process(*args, **kwargs)
+        finally:
+            with lock:
+                active_count -= 1
+
+    km_module._process_single_shot = tracked_process
+
+    try:
+        img_par = migrator.run(n_jobs=4, show_progress=False)
+    finally:
+        km_module._process_single_shot = original_process
+
+    # Verify concurrency was at least n_sources (4 shots running simultaneously)
+    assert max_concurrent == n_sources, f"Expected {n_sources} concurrent jobs, got {max_concurrent}"
+
+    # Verify numerical identity
+    assert np.allclose(img_seq, img_par, rtol=1e-5, atol=1e-8)
+
+
+def test_kirchhoff_parallel_benchmark_speedup():
+    """Benchmarks KirchhoffMigration runtime to ensure parallel execution
+
+    is faster than sequential execution.
+    """
+    import time
+
+    nx, nz = 250, 250
+    vp = np.ones((nx, nz)) * 2000.0
+    vp[:, 125:] = 2500.0
+
+    n_sources = 16
+    n_receivers = 20
+    sources = np.zeros((n_sources, 2))
+    sources[:, 0] = np.linspace(10, 240, n_sources)
+    sources[:, 1] = 5.0
+
+    receivers = np.zeros((n_sources, n_receivers, 2))
+    for s in range(n_sources):
+        receivers[s, :, 0] = np.linspace(5, 245, n_receivers)
+        receivers[s, :, 1] = 5.0
+
+    time_axis = np.linspace(0, 0.8, 600)
+    shots = np.random.randn(n_sources, n_receivers, 600)
+
+    migrator = KirchhoffMigration(
+        vp=vp, sources=sources, receivers=receivers, shots=shots, time=time_axis, spacing=(10.0, 10.0), n_jobs=-1
+    )
+
+    t0 = time.time()
+    img_seq = migrator.run(n_jobs=1, show_progress=False)
+    t_seq = time.time() - t0
+
+    t0 = time.time()
+    img_par = migrator.run(n_jobs=-1, show_progress=False)
+    t_par = time.time() - t0
+
+    print(f"\n[Benchmark] Sequential: {t_seq:.4f} s | Parallel: {t_par:.4f} s | Speedup: {t_seq/t_par:.2f}x")
+    assert t_par < t_seq, f"Parallel execution ({t_par:.4f} s) was not faster than sequential ({t_seq:.4f} s)"
+    assert np.allclose(img_seq, img_par, rtol=1e-5, atol=1e-8)
+
+
