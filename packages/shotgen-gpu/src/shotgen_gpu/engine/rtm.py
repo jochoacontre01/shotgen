@@ -9,39 +9,55 @@ from shotgen_gpu.config import configure_devito_device
 
 
 def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None):
-    """Helper to load dataset for Devito GPU RTM without importing shotgen-core."""
-    import segyio
+    """Helper to load dataset for Devito GPU RTM."""
     import h5py
+    try:
+        from shotgen.io import SegyIO
+    except ImportError:
+        SegyIO = None
 
     traces_path = os.path.join(dataset_dir, "traces.segy")
     v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
     meta_path = os.path.join(dataset_dir, "metadata.h5")
 
     if os.path.exists(v0_path):
-        with segyio.open(v0_path, "r", strict=False) as f:
-            vp = segyio.tools.collect(f.trace)
-            dz = f.bin[segyio.BinField.Interval] / 1000.0
-            nx = len(f.trace)
-            dx = (f.header[1][segyio.TraceField.CDP_X] - f.header[0][segyio.TraceField.CDP_X]) / 1000.0 if nx > 1 else 1.0
-            if dx <= 0.0: dx = 1.0
-            if dz <= 0.0: dz = 1.0
+        if SegyIO is not None:
+            vp, dx, dz = SegyIO.read_model(v0_path)
+        else:
+            import segyio
+            with segyio.open(v0_path, "r", ignore_geometry=True, strict=False) as f:
+                vp = f.trace.raw[:]
+                dz = f.bin[segyio.BinField.Interval] / 1000.0
+                nx = len(f.trace)
+                dx = (f.attributes(segyio.TraceField.CDP_X)[1] - f.attributes(segyio.TraceField.CDP_X)[0]) / 1000.0 if nx > 1 else 1.0
+                if dx <= 0.0: dx = 1.0
+                if dz <= 0.0: dz = 1.0
     else:
         raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
 
-    with segyio.open(traces_path, "r", strict=False) as f:
-        n_traces = f.tracecount
-        flat_data = segyio.tools.collect(f.trace)
-        sources = np.zeros((n_traces, 2))
-        receivers = np.zeros((n_traces, 2))
-        for i in range(n_traces):
-            header = f.header[i]
-            scalar = header[segyio.TraceField.SourceGroupScalar]
-            mult = 1.0 / abs(scalar) if scalar < 0 else (scalar if scalar > 0 else 1.0)
-            sources[i, 0] = header[segyio.TraceField.SourceX] * mult
-            sources[i, 1] = header[segyio.TraceField.SourceY] * mult
-            receivers[i, 0] = header[segyio.TraceField.GroupX] * mult
-            receivers[i, 1] = header[segyio.TraceField.GroupY] * mult
-        time = f.samples / 1000.0
+    if SegyIO is not None:
+        segy_data = SegyIO.read(traces_path)
+        flat_data = segy_data["data"]
+        sources = segy_data["sources"]
+        receivers = segy_data["receivers"]
+        time = segy_data["time"]
+    else:
+        import segyio
+        with segyio.open(traces_path, "r", ignore_geometry=True, strict=False) as f:
+            n_traces = len(f.trace)
+            flat_data = f.trace.raw[:]
+            scalars = f.attributes(segyio.TraceField.SourceGroupScalar)[:]
+            mults = np.ones(n_traces, dtype=np.float64)
+            mults[scalars < 0] = 1.0 / np.abs(scalars[scalars < 0])
+            mults[scalars > 0] = scalars[scalars > 0].astype(np.float64)
+
+            sx = f.attributes(segyio.TraceField.SourceX)[:]
+            sy = f.attributes(segyio.TraceField.SourceY)[:]
+            rx = f.attributes(segyio.TraceField.GroupX)[:]
+            ry = f.attributes(segyio.TraceField.GroupY)[:]
+            sources = np.column_stack((sx * mults, sy * mults))
+            receivers = np.column_stack((rx * mults, ry * mults))
+            time = f.samples / 1000.0
 
     n_traces, n_time = flat_data.shape
     unique_src = np.unique(np.round(sources, 3), axis=0)

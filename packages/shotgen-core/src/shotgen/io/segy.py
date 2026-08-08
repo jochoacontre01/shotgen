@@ -1,5 +1,7 @@
-import segyio
+import os
+import struct
 import numpy as np
+import segyio
 
 
 class SegyIO:
@@ -97,40 +99,130 @@ class SegyIO:
     def read(filepath):
         """
         Read a SEGY file and return its geometry and traces.
+        Uses ultra-fast memory mapping with seamless fallback to vectorized segyio attributes.
         """
-        with segyio.open(filepath, "r", strict=False) as f:
-            n_traces = f.tracecount
-            data = segyio.tools.collect(f.trace)
-            
-            sources = np.zeros((n_traces, 2))
-            receivers = np.zeros((n_traces, 2))
-            cdps = np.zeros(n_traces, dtype=int)
-            offsets = np.zeros(n_traces)
-            
-            for i in range(n_traces):
-                header = f.header[i]
-                scalar = header[segyio.TraceField.SourceGroupScalar]
-                if scalar < 0:
-                    mult = 1.0 / abs(scalar)
-                elif scalar > 0:
-                    mult = scalar
-                else:
-                    mult = 1.0
-                    
-                sources[i, 0] = header[segyio.TraceField.SourceX] * mult
-                sources[i, 1] = header[segyio.TraceField.SourceY] * mult
-                receivers[i, 0] = header[segyio.TraceField.GroupX] * mult
-                receivers[i, 1] = header[segyio.TraceField.GroupY] * mult
-                cdps[i] = header[segyio.TraceField.CDP]
-                
-                offset_scalar_value = header[segyio.TraceField.offset]
-                offsets[i] = offset_scalar_value * mult if offset_scalar_value != 0 else np.sqrt(
-                    (sources[i, 0] - receivers[i, 0])**2 + (sources[i, 1] - receivers[i, 1])**2
-                )
-                
+        try:
+            return SegyIO._read_mmap(filepath)
+        except Exception:
+            return SegyIO._read_vectorized_segyio(filepath)
+
+    @staticmethod
+    def _read_mmap(filepath):
+        file_size = os.path.getsize(filepath)
+        if file_size < 3600:
+            raise ValueError("File too small to be a valid SEGY file.")
+
+        with open(filepath, "rb") as f:
+            f.seek(3200)
+            bin_hdr = f.read(400)
+            if len(bin_hdr) < 400:
+                raise ValueError("Incomplete binary header.")
+
+            dt_us = struct.unpack(">h", bin_hdr[16:18])[0]
+            ns = struct.unpack(">h", bin_hdr[20:22])[0]
+            format_code = struct.unpack(">h", bin_hdr[24:26])[0]
+            endian_prefix = ">"
+
+            if ns <= 0 or ns > 100000 or format_code not in (1, 5):
+                dt_us = struct.unpack("<h", bin_hdr[16:18])[0]
+                ns = struct.unpack("<h", bin_hdr[20:22])[0]
+                format_code = struct.unpack("<h", bin_hdr[24:26])[0]
+                endian_prefix = "<"
+
+        if ns <= 0 or format_code not in (1, 5):
+            raise ValueError(f"Unsupported or invalid SEGY header: ns={ns}, format={format_code}")
+
+        trace_stride = 240 + ns * 4
+        if (file_size - 3600) % trace_stride != 0 or file_size < 3600 + trace_stride:
+            raise ValueError("Trace stride mismatch or truncated file.")
+
+        n_traces = (file_size - 3600) // trace_stride
+        float_dtype = f"{endian_prefix}f4" if format_code == 5 else f"{endian_prefix}u4"
+        trace_dtype = np.dtype([
+            ("hdr", np.uint8, 240),
+            ("data", float_dtype, ns)
+        ])
+
+        mmap_data = np.memmap(filepath, dtype=trace_dtype, mode="r", offset=3600, shape=(n_traces,))
+        
+        if format_code == 5:
+            data = np.ascontiguousarray(mmap_data["data"], dtype=np.float32)
+        else:
+            raw_u4 = np.ascontiguousarray(mmap_data["data"])
+            sign = np.where((raw_u4 >> 31) & 0x01, -1.0, 1.0).astype(np.float32)
+            exp = (((raw_u4 >> 24) & 0x7F).astype(np.int32) - 64)
+            mant = (raw_u4 & 0x00FFFFFF).astype(np.float32) / 16777216.0
+            data = (sign * mant * (16.0 ** exp)).astype(np.float32)
+
+        hdr_bytes = mmap_data["hdr"]
+        scalars = np.frombuffer(hdr_bytes[:, 70:72].tobytes(), dtype=f"{endian_prefix}i2")
+        sx = np.frombuffer(hdr_bytes[:, 72:76].tobytes(), dtype=f"{endian_prefix}i4")
+        sy = np.frombuffer(hdr_bytes[:, 76:80].tobytes(), dtype=f"{endian_prefix}i4")
+        rx = np.frombuffer(hdr_bytes[:, 80:84].tobytes(), dtype=f"{endian_prefix}i4")
+        ry = np.frombuffer(hdr_bytes[:, 84:88].tobytes(), dtype=f"{endian_prefix}i4")
+        cdps = np.frombuffer(hdr_bytes[:, 20:24].tobytes(), dtype=f"{endian_prefix}i4")
+        raw_offsets = np.frombuffer(hdr_bytes[:, 36:40].tobytes(), dtype=f"{endian_prefix}i4")
+
+        mults = np.ones(n_traces, dtype=np.float64)
+        neg_mask = scalars < 0
+        pos_mask = scalars > 0
+        mults[neg_mask] = 1.0 / np.abs(scalars[neg_mask])
+        mults[pos_mask] = scalars[pos_mask].astype(np.float64)
+
+        sources = np.column_stack((sx * mults, sy * mults))
+        receivers = np.column_stack((rx * mults, ry * mults))
+
+        offsets = np.where(
+            raw_offsets != 0,
+            raw_offsets * mults,
+            np.sqrt((sources[:, 0] - receivers[:, 0])**2 + (sources[:, 1] - receivers[:, 1])**2)
+        )
+
+        dt = dt_us / 1e6 if dt_us > 0 else 0.001
+        time_vector = np.arange(ns, dtype=np.float64) * dt
+
+        return {
+            "data": data,
+            "sources": sources,
+            "receivers": receivers,
+            "cdp": cdps,
+            "offset": offsets,
+            "dt": dt,
+            "time": time_vector
+        }
+
+    @staticmethod
+    def _read_vectorized_segyio(filepath):
+        with segyio.open(filepath, "r", ignore_geometry=True, strict=False) as f:
+            n_traces = len(f.trace)
+            data = f.trace.raw[:]
+
+            scalars = f.attributes(segyio.TraceField.SourceGroupScalar)[:]
+            mults = np.ones(n_traces, dtype=np.float64)
+            neg_mask = scalars < 0
+            pos_mask = scalars > 0
+            mults[neg_mask] = 1.0 / np.abs(scalars[neg_mask])
+            mults[pos_mask] = scalars[pos_mask].astype(np.float64)
+
+            sx = f.attributes(segyio.TraceField.SourceX)[:]
+            sy = f.attributes(segyio.TraceField.SourceY)[:]
+            rx = f.attributes(segyio.TraceField.GroupX)[:]
+            ry = f.attributes(segyio.TraceField.GroupY)[:]
+            cdps = f.attributes(segyio.TraceField.CDP)[:]
+            raw_offsets = f.attributes(segyio.TraceField.offset)[:]
+
+            sources = np.column_stack((sx * mults, sy * mults))
+            receivers = np.column_stack((rx * mults, ry * mults))
+
+            offsets = np.where(
+                raw_offsets != 0,
+                raw_offsets * mults,
+                np.sqrt((sources[:, 0] - receivers[:, 0])**2 + (sources[:, 1] - receivers[:, 1])**2)
+            )
+
             dt = f.bin[segyio.BinField.Interval] / 1e6
             time_vector = f.samples / 1000.0
-            
+
         return {
             "data": data,
             "sources": sources,
@@ -173,23 +265,85 @@ class SegyIO:
         Read a 2D velocity model array and dimensions from a SEGY file.
         Optionally resamples the model to target_dx and target_dz while preserving physical extent.
         """
-        with segyio.open(filepath, "r", strict=False) as f:
-            data = segyio.tools.collect(f.trace)
-            dz = f.bin[segyio.BinField.Interval] / 1000.0
-            nx = len(f.trace)
-            if nx > 1:
-                dx = (f.header[1][segyio.TraceField.CDP_X] - f.header[0][segyio.TraceField.CDP_X]) / 1000.0
-            else:
-                dx = 1.0
-            
-            if dx <= 0.0:
-                dx = 1.0
-            if dz <= 0.0:
-                dz = 1.0
+        try:
+            data, dx, dz = SegyIO._read_model_mmap(filepath)
+        except Exception:
+            data, dx, dz = SegyIO._read_model_vectorized(filepath)
 
         if target_dx is not None or target_dz is not None:
             from shotgen.models import resample_velocity_model
             data, nx_new, nz_new, dx, dz = resample_velocity_model(data, dx, dz, target_dx, target_dz)
 
         return data, dx, dz
+
+    @staticmethod
+    def _read_model_mmap(filepath):
+        file_size = os.path.getsize(filepath)
+        if file_size < 3600:
+            raise ValueError("File too small.")
+
+        with open(filepath, "rb") as f:
+            f.seek(3200)
+            bin_hdr = f.read(400)
+            dz_ms = struct.unpack(">h", bin_hdr[16:18])[0]
+            ns = struct.unpack(">h", bin_hdr[20:22])[0]
+            fmt = struct.unpack(">h", bin_hdr[24:26])[0]
+            endian_prefix = ">"
+            if ns <= 0 or ns > 100000 or fmt not in (1, 5):
+                dz_ms = struct.unpack("<h", bin_hdr[16:18])[0]
+                ns = struct.unpack("<h", bin_hdr[20:22])[0]
+                fmt = struct.unpack("<h", bin_hdr[24:26])[0]
+                endian_prefix = "<"
+
+        dz = dz_ms / 1000.0 if dz_ms > 0 else 1.0
+        trace_stride = 240 + ns * 4
+        nx = (file_size - 3600) // trace_stride
+        if nx <= 0 or (file_size - 3600) % trace_stride != 0:
+            raise ValueError("Invalid trace stride or length.")
+
+        float_dtype = f"{endian_prefix}f4" if fmt == 5 else f"{endian_prefix}u4"
+        trace_dtype = np.dtype([
+            ("hdr", np.uint8, 240),
+            ("data", float_dtype, ns)
+        ])
+
+        mmap_data = np.memmap(filepath, dtype=trace_dtype, mode="r", offset=3600, shape=(nx,))
+        if fmt == 5:
+            data = np.ascontiguousarray(mmap_data["data"], dtype=np.float32)
+        else:
+            raw_u4 = np.ascontiguousarray(mmap_data["data"])
+            sign = np.where((raw_u4 >> 31) & 0x01, -1.0, 1.0).astype(np.float32)
+            exp = (((raw_u4 >> 24) & 0x7F).astype(np.int32) - 64)
+            mant = (raw_u4 & 0x00FFFFFF).astype(np.float32) / 16777216.0
+            data = (sign * mant * (16.0 ** exp)).astype(np.float32)
+
+        hdr_bytes = mmap_data["hdr"]
+        cdp_x = np.frombuffer(hdr_bytes[:, 180:184].tobytes(), dtype=f"{endian_prefix}i4")
+        if nx > 1 and cdp_x[1] != cdp_x[0]:
+            dx = (cdp_x[1] - cdp_x[0]) / 1000.0
+        else:
+            dx = 1.0
+
+        if dx <= 0.0: dx = 1.0
+        if dz <= 0.0: dz = 1.0
+
+        return data, dx, dz
+
+    @staticmethod
+    def _read_model_vectorized(filepath):
+        with segyio.open(filepath, "r", ignore_geometry=True, strict=False) as f:
+            data = f.trace.raw[:]
+            dz = f.bin[segyio.BinField.Interval] / 1000.0
+            nx = len(f.trace)
+            if nx > 1:
+                cdp_x = f.attributes(segyio.TraceField.CDP_X)[:]
+                dx = (cdp_x[1] - cdp_x[0]) / 1000.0
+            else:
+                dx = 1.0
+
+            if dx <= 0.0: dx = 1.0
+            if dz <= 0.0: dz = 1.0
+
+        return data, dx, dz
+
 
