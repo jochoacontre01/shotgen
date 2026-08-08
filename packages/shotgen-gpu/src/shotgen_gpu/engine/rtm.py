@@ -8,7 +8,7 @@ from examples.seismic.acoustic import AcousticWaveSolver
 from shotgen_gpu.config import configure_devito_device
 
 
-def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None):
+def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None, verbose=True):
     """Helper to load dataset for Devito GPU RTM."""
     import h5py
     try:
@@ -16,15 +16,20 @@ def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None):
     except ImportError:
         SegyIO = None
 
+    if verbose:
+        print(f"\n--- [load_dataset_dir_gpu] Starting SEGY file reading phase for GPU RTM: '{dataset_dir}' ---")
+
     traces_path = os.path.join(dataset_dir, "traces.segy")
     v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
     meta_path = os.path.join(dataset_dir, "metadata.h5")
 
     if os.path.exists(v0_path):
         if SegyIO is not None:
-            vp, dx, dz = SegyIO.read_model(v0_path)
+            vp, dx, dz = SegyIO.read_model(v0_path, verbose=verbose)
         else:
             import segyio
+            if verbose:
+                print(f"[SegyIO] Reading velocity model from: {v0_path}...")
             with segyio.open(v0_path, "r", ignore_geometry=True, strict=False) as f:
                 vp = f.trace.raw[:]
                 dz = f.bin[segyio.BinField.Interval] / 1000.0
@@ -36,13 +41,15 @@ def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None):
         raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
 
     if SegyIO is not None:
-        segy_data = SegyIO.read(traces_path)
+        segy_data = SegyIO.read(traces_path, verbose=verbose)
         flat_data = segy_data["data"]
         sources = segy_data["sources"]
         receivers = segy_data["receivers"]
         time = segy_data["time"]
     else:
         import segyio
+        if verbose:
+            print(f"[SegyIO] Reading seismic traces from: {traces_path}...")
         with segyio.open(traces_path, "r", ignore_geometry=True, strict=False) as f:
             n_traces = len(f.trace)
             flat_data = f.trace.raw[:]
@@ -63,6 +70,9 @@ def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None):
     unique_src = np.unique(np.round(sources, 3), axis=0)
     n_sources = unique_src.shape[0]
     n_receivers = n_traces // n_sources
+
+    if verbose:
+        print(f"--- [load_dataset_dir_gpu] Completed reading phase: {n_sources} shots x {n_receivers} receivers ({n_traces:,} traces) | Velocity grid {vp.shape[0]}x{vp.shape[1]} ---\n")
 
     shots = flat_data.reshape((n_sources, n_receivers, n_time))
     sources = sources.reshape((n_sources, n_receivers, 2))[:, 0, :]

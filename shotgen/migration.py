@@ -16,10 +16,13 @@ matplotlib.rcParams.update({"font.size":14})
 
 matplotlib.rcParams.update({"font.size":14})
 
-def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None):
+def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None, verbose=True):
     import os
     import h5py
     from shotgen.io import SegyIO
+
+    if verbose:
+        print(f"\n--- [load_dataset_dir] Starting SEGY file reading phase for dataset: '{dataset_dir}' ---")
     
     traces_path = os.path.join(dataset_dir, "traces.segy")
     v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
@@ -27,13 +30,13 @@ def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None):
     meta_path = os.path.join(dataset_dir, "metadata.h5")
     
     if os.path.exists(v0_path):
-        vp, dx, dz = SegyIO.read_model(v0_path)
+        vp, dx, dz = SegyIO.read_model(v0_path, verbose=verbose)
     # elif os.path.exists(vel_path):
-    #     vp, dx, dz = SegyIO.read_model(vel_path)
+    #     vp, dx, dz = SegyIO.read_model(vel_path, verbose=verbose)
     else:
         raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
         
-    segy_data = SegyIO.read(traces_path)
+    segy_data = SegyIO.read(traces_path, verbose=verbose)
     receivers = segy_data["receivers"]
     sources = segy_data["sources"]
     time = segy_data["time"]

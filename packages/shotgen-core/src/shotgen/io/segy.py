@@ -1,4 +1,5 @@
 import os
+import time
 import struct
 import numpy as np
 import segyio
@@ -96,15 +97,29 @@ class SegyIO:
                     trace_idx += 1
 
     @staticmethod
-    def read(filepath):
+    def read(filepath, verbose=True):
         """
         Read a SEGY file and return its geometry and traces.
         Uses ultra-fast memory mapping with seamless fallback to vectorized segyio attributes.
         """
+        t0 = time.perf_counter()
+        if verbose:
+            size_mb = os.path.getsize(filepath) / (1024 * 1024) if os.path.exists(filepath) else 0.0
+            print(f"[SegyIO] Reading seismic traces from: {filepath} ({size_mb:.2f} MB)...")
+
         try:
-            return SegyIO._read_mmap(filepath)
+            res = SegyIO._read_mmap(filepath)
+            method = "memory-mapped I/O"
         except Exception:
-            return SegyIO._read_vectorized_segyio(filepath)
+            res = SegyIO._read_vectorized_segyio(filepath)
+            method = "vectorized segyio"
+
+        if verbose:
+            n_traces, n_samples = res["data"].shape
+            t_elapsed = time.perf_counter() - t0
+            print(f"[SegyIO] Loaded {n_traces:,} traces x {n_samples:,} samples ({res['dt']*1000:.2f} ms dt) via {method} in {t_elapsed:.3f} s.")
+
+        return res
 
     @staticmethod
     def _read_mmap(filepath):
@@ -260,21 +275,33 @@ class SegyIO:
                 }
 
     @staticmethod
-    def read_model(filepath, target_dx=None, target_dz=None):
+    def read_model(filepath, target_dx=None, target_dz=None, verbose=True):
         """
         Read a 2D velocity model array and dimensions from a SEGY file.
         Optionally resamples the model to target_dx and target_dz while preserving physical extent.
         """
+        t0 = time.perf_counter()
+        if verbose:
+            size_mb = os.path.getsize(filepath) / (1024 * 1024) if os.path.exists(filepath) else 0.0
+            print(f"[SegyIO] Reading velocity model from: {filepath} ({size_mb:.2f} MB)...")
+
         try:
             data, dx, dz = SegyIO._read_model_mmap(filepath)
+            method = "memory-mapped I/O"
         except Exception:
             data, dx, dz = SegyIO._read_model_vectorized(filepath)
+            method = "vectorized segyio"
 
         if target_dx is not None or target_dz is not None:
             from shotgen.models import resample_velocity_model
             data, nx_new, nz_new, dx, dz = resample_velocity_model(data, dx, dz, target_dx, target_dz)
 
+        if verbose:
+            t_elapsed = time.perf_counter() - t0
+            print(f"[SegyIO] Loaded velocity model grid shape {data.shape[0]}x{data.shape[1]} (dx={dx:.1f}m, dz={dz:.1f}m) via {method} in {t_elapsed:.3f} s.")
+
         return data, dx, dz
+
 
     @staticmethod
     def _read_model_mmap(filepath):
