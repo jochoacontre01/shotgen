@@ -41,6 +41,9 @@ import time
 import contextlib
 import joblib
 
+from shotgen.pylogger import get_logger, log_execution_time
+
+logger = get_logger("shotgen.sampleshot")
 configuration["log-level"] = "WARNING"
 
 class PureNvidiaCompiler(dac.NvidiaCompiler):

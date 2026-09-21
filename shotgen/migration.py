@@ -10,6 +10,10 @@ from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 import scienceplots
 import matplotlib
+import logging
+from shotgen.pylogger import get_logger, log_execution_time
+
+logger = get_logger("shotgen.migration")
 configuration["log-level"] = "WARNING"
 plt.style.use(['science','no-latex'])
 matplotlib.rcParams.update({"font.size":14})
@@ -21,52 +25,45 @@ def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None, verbose=Tr
     import h5py
     from shotgen.io import SegyIO
 
-    if verbose:
-        print(f"\n--- [load_dataset_dir] Starting SEGY file reading phase for dataset: '{dataset_dir}' ---")
-    
-    traces_path = os.path.join(dataset_dir, "traces.segy")
-    v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
-    # vel_path = os.path.join(dataset_dir, "velocity_model.segy")
-    meta_path = os.path.join(dataset_dir, "metadata.h5")
-    
-    if os.path.exists(v0_path):
-        vp, dx, dz = SegyIO.read_model(v0_path, verbose=verbose)
-    # elif os.path.exists(vel_path):
-    #     vp, dx, dz = SegyIO.read_model(vel_path, verbose=verbose)
-    else:
-        raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
+    with log_execution_time(logger, f"Load SEGY dataset '{dataset_dir}'", level=logging.INFO if verbose else logging.DEBUG):
+        if verbose:
+            logger.info(f"Starting SEGY dataset loading phase for: '{dataset_dir}'")
         
-    segy_data = SegyIO.read(traces_path, verbose=verbose)
-    receivers = segy_data["receivers"]
-    sources = segy_data["sources"]
-    time = segy_data["time"]
-    
-    flat_data = segy_data["data"]
-    n_traces, n_time = flat_data.shape
-    
-    # We must preserve the original order of sources, np.unique might sort them.
-    # Instead, we find how many unique sources by counting.
-    # Actually, we can just reshape since data is sequentially saved.
-    unique_src = np.unique(np.round(sources, 3), axis=0)
-    n_sources = unique_src.shape[0]
-    n_receivers = n_traces // n_sources
-    
-    shots = flat_data.reshape((n_sources, n_receivers, n_time))
-    
-    # Reshape coordinates back to their original multidimensional shapes
-    sources = sources.reshape((n_sources, n_receivers, 2))[:, 0, :]
-    receivers = receivers.reshape((n_sources, n_receivers, 2))
-    
-    f0 = provided_f0
-    if os.path.exists(meta_path) and f0 is None:
-        with h5py.File(meta_path, "r") as f:
-            if "f0" in f:
-                f0 = f["f0"][()]
-                
-    if require_f0 and f0 is None:
-        raise ValueError(f"f0 is required for RTM but was not found in {meta_path} and not provided as an argument.")
+        traces_path = os.path.join(dataset_dir, "traces.segy")
+        v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
+        meta_path = os.path.join(dataset_dir, "metadata.h5")
         
-    return vp, sources, receivers, shots, time, f0, dx, dz
+        if os.path.exists(v0_path):
+            vp, dx, dz = SegyIO.read_model(v0_path, verbose=verbose)
+        else:
+            raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
+            
+        segy_data = SegyIO.read(traces_path, verbose=verbose)
+        receivers = segy_data["receivers"]
+        sources = segy_data["sources"]
+        time = segy_data["time"]
+        
+        flat_data = segy_data["data"]
+        n_traces, n_time = flat_data.shape
+        
+        unique_src = np.unique(np.round(sources, 3), axis=0)
+        n_sources = unique_src.shape[0]
+        n_receivers = n_traces // n_sources
+        
+        shots = flat_data.reshape((n_sources, n_receivers, n_time))
+        sources = sources.reshape((n_sources, n_receivers, 2))[:, 0, :]
+        receivers = receivers.reshape((n_sources, n_receivers, 2))
+        
+        f0 = provided_f0
+        if os.path.exists(meta_path) and f0 is None:
+            with h5py.File(meta_path, "r") as f:
+                if "f0" in f:
+                    f0 = f["f0"][()]
+                    
+        if require_f0 and f0 is None:
+            raise ValueError(f"f0 is required for RTM but was not found in {meta_path} and not provided as an argument.")
+            
+        return vp, sources, receivers, shots, time, f0, dx, dz
 
 class ReverseTimeMigration:
     """

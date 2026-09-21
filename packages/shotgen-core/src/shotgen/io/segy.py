@@ -4,6 +4,10 @@ import struct
 import numpy as np
 import segyio
 
+from shotgen.pylogger import get_logger, log_execution_time
+
+logger = get_logger("shotgen.io.segy")
+
 
 class SegyIO:
     """
@@ -28,6 +32,7 @@ class SegyIO:
         n_sources, n_receivers, n_time = shot_record.shot_run.shape
         total_traces = n_sources * n_receivers
         
+        logger.info(f"Writing SEGY file to: {filepath} ({total_traces:,} traces, {n_time:,} samples/trace)")
         dt_s = shot_record.time_vector[1] - shot_record.time_vector[0]
         dt_us = int(np.round(dt_s * 1e6))
         
@@ -62,8 +67,6 @@ class SegyIO:
                 sy = shot_record.sources[src_idx, 1]
                 
                 for rec_idx in range(n_receivers):
-                    trace_data = shot_record.shot_run[src_idx, rec_idx, :]
-                    
                     if shot_record.recs.ndim == 3:
                         rx = shot_record.recs[src_idx, rec_idx, 0]
                         ry = shot_record.recs[src_idx, rec_idx, 1]
@@ -72,29 +75,29 @@ class SegyIO:
                         ry = shot_record.recs[rec_idx, 1]
                         
                     cmp_x = (sx + rx) / 2
-                    cmp_y = (sy + ry) / 2
-                    cdp_num = cmp_x_to_cdp[np.round(cmp_x, 3)]
-                    
-                    f.trace[trace_idx] = trace_data.astype(np.float32)
+                    cdp_number = cmp_x_to_cdp[np.round(cmp_x, 3)]
+                    offset = np.sqrt((sx - rx)**2 + (sy - ry)**2)
                     
                     f.header[trace_idx] = {
-                        segyio.TraceField.TRACE_SEQUENCE_LINE: trace_idx + 1,
-                        segyio.TraceField.TRACE_SEQUENCE_FILE: trace_idx + 1,
                         segyio.TraceField.FieldRecord: src_idx + 1,
-                        segyio.TraceField.TraceNumber: rec_idx + 1,
-                        segyio.TraceField.SourceX: int(np.round(sx * 1000)),
-                        segyio.TraceField.SourceY: int(np.round(sy * 1000)),
-                        segyio.TraceField.GroupX: int(np.round(rx * 1000)),
-                        segyio.TraceField.GroupY: int(np.round(ry * 1000)),
-                        segyio.TraceField.CDP: cdp_num,
-                        segyio.TraceField.CDP_X: int(np.round(cmp_x * 1000)),
-                        segyio.TraceField.CDP_Y: int(np.round(cmp_y * 1000)),
+                        segyio.TraceField.TraceNumber: trace_idx + 1,
+                        segyio.TraceField.EnergySourcePoint: src_idx + 1,
+                        segyio.TraceField.CDP: cdp_number,
+                        segyio.TraceField.CDP_TRACE: 1,
                         segyio.TraceField.SourceGroupScalar: -1000,
-                        segyio.TraceField.ElevationScalar: -1000,
-                        segyio.TraceField.offset: int(np.round(np.sqrt((sx - rx)**2 + (sy - ry)**2) * 1000))
+                        segyio.TraceField.SourceX: int(sx * 1000),
+                        segyio.TraceField.SourceY: int(sy * 1000),
+                        segyio.TraceField.GroupX: int(rx * 1000),
+                        segyio.TraceField.GroupY: int(ry * 1000),
+                        segyio.TraceField.CDP_X: int(cmp_x * 1000),
+                        segyio.TraceField.CDP_Y: int(sy * 1000),
+                        segyio.TraceField.offset: int(offset * 1000),
+                        segyio.TraceField.TRACE_SAMPLE_COUNT: n_time,
+                        segyio.TraceField.TRACE_SAMPLE_INTERVAL: dt_us,
                     }
-                    
+                    f.trace[trace_idx] = shot_record.shot_run[src_idx, rec_idx, :].astype(np.float32)
                     trace_idx += 1
+        logger.info(f"Successfully written {total_traces:,} traces to {filepath}")
 
     @staticmethod
     def read(filepath, verbose=True):
@@ -103,21 +106,26 @@ class SegyIO:
         Uses ultra-fast memory mapping with seamless fallback to vectorized segyio attributes.
         """
         t0 = time.perf_counter()
+        size_mb = os.path.getsize(filepath) / (1024 * 1024) if os.path.exists(filepath) else 0.0
         if verbose:
-            size_mb = os.path.getsize(filepath) / (1024 * 1024) if os.path.exists(filepath) else 0.0
-            print(f"[SegyIO] Reading seismic traces from: {filepath} ({size_mb:.2f} MB)...")
+            logger.info(f"Reading seismic traces from: {filepath} ({size_mb:.2f} MB)...")
 
         try:
+            logger.debug(f"Attempting memory-mapped IO for file: {filepath}")
             res = SegyIO._read_mmap(filepath)
             method = "memory-mapped I/O"
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Memory mapping failed ({e}); falling back to vectorized segyio.")
             res = SegyIO._read_vectorized_segyio(filepath)
             method = "vectorized segyio"
 
+        n_traces, n_samples = res["data"].shape
+        t_elapsed = time.perf_counter() - t0
+        msg = f"Loaded {n_traces:,} traces x {n_samples:,} samples ({res['dt']*1000:.2f} ms dt) via {method} in {t_elapsed:.3f} s."
         if verbose:
-            n_traces, n_samples = res["data"].shape
-            t_elapsed = time.perf_counter() - t0
-            print(f"[SegyIO] Loaded {n_traces:,} traces x {n_samples:,} samples ({res['dt']*1000:.2f} ms dt) via {method} in {t_elapsed:.3f} s.")
+            logger.info(msg)
+        else:
+            logger.debug(msg)
 
         return res
 

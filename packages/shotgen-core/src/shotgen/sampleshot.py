@@ -17,6 +17,9 @@ from joblib import Parallel, delayed
 from shotgen.io import SegyIO
 from shotgen.geometry import map_coordinate_to_index
 from shotgen.runner import run_gpu_simulation_dict
+from shotgen.pylogger import get_logger, log_execution_time
+
+logger = get_logger("shotgen.sampleshot")
 
 
 def _find_assets_dir():
@@ -34,11 +37,13 @@ def detect_device():
     """
     has_gpu_compiler = bool(shutil.which("nvc++") or shutil.which("nvc"))
     if not has_gpu_compiler:
+        logger.debug("No nvc++/nvc GPU compiler found in PATH. Defaulting device to 'cpu'.")
         return "cpu"
     if shutil.which("nvidia-smi"):
         try:
             res = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
             if res.returncode == 0:
+                logger.debug("NVIDIA GPU detected via nvidia-smi with OpenACC compiler available.")
                 return "cuda"
         except Exception:
             pass
@@ -49,10 +54,12 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
     """
     Configures Devito environment variables and runtime settings if shotgen-gpu is installed.
     """
+    logger.info(f"Configuring Devito device: device='{device}', compiler='{compiler}', language='{language}'")
     try:
         from shotgen_gpu.config import configure_devito_device as _config_gpu
         return _config_gpu(device=device, platform=platform, compiler=compiler, language=language, verbose=verbose)
     except ImportError:
+        logger.debug("shotgen-gpu package not installed; falling back to CPU simulation engine.")
         return "cpu"
 
 
@@ -398,81 +405,82 @@ class ShotRecord:
 
         self.v0 = gaussian_filter(self.vel, sigma=self.smooth)
 
-        if self.engine.lower() == "devito":
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                cfg = {
-                    "task": "simulation",
-                    "nx": int(self.nx),
-                    "nz": int(self.nz),
-                    "dx": float(self.dx),
-                    "dz": float(self.dz),
-                    "n_sources": int(self.n_sources),
-                    "n_receivers": int(self.n_receivers),
-                    "f0": float(self.f0),
-                    "ms": float(ms),
-                    "fd_order": int(self.fd_order),
-                    "n_damping": int(self.n_damping),
-                    "smooth": float(self.smooth),
-                    "origin": [float(self.origin[0]), float(self.origin[1])],
-                    "src_origin": [float(self.src_origin[0]), float(self.src_origin[1])],
-                    "rec_origin": [float(self.rec_origin[0]), float(self.rec_origin[1])],
-                    "group_offset": float(self.group_offset),
-                    "shot_offset": float(self.shot_offset),
-                    "gather": str(self.gather),
-                    "meters_per_cell": float(self.meters_per_cell),
-                    "snr": float(self.snr) if self.snr is not None else None,
-                    "fs_ms": float(self.fs_ms) if self.fs_ms is not None else None,
-                    "sources": self.sources.tolist() if hasattr(self, 'sources') and self.sources is not None else None,
-                    "receivers": self.recs.tolist() if hasattr(self, 'recs') and self.recs is not None else None,
-                    "v_base": float(np.mean(self.vel)),
-                    "device": self.device,
-                    "output_dir": tmp_dir,
-                    "save_wavefield": kwargs.get("save_wavefield", False),
-                }
+        with log_execution_time(logger, f"Shot simulation ({self.n_sources} sources, engine='{self.engine}')"):
+            if self.engine.lower() == "devito":
+                import tempfile
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    cfg = {
+                        "task": "simulation",
+                        "nx": int(self.nx),
+                        "nz": int(self.nz),
+                        "dx": float(self.dx),
+                        "dz": float(self.dz),
+                        "n_sources": int(self.n_sources),
+                        "n_receivers": int(self.n_receivers),
+                        "f0": float(self.f0),
+                        "ms": float(ms),
+                        "fd_order": int(self.fd_order),
+                        "n_damping": int(self.n_damping),
+                        "smooth": float(self.smooth),
+                        "origin": [float(self.origin[0]), float(self.origin[1])],
+                        "src_origin": [float(self.src_origin[0]), float(self.src_origin[1])],
+                        "rec_origin": [float(self.rec_origin[0]), float(self.rec_origin[1])],
+                        "group_offset": float(self.group_offset),
+                        "shot_offset": float(self.shot_offset),
+                        "gather": str(self.gather),
+                        "meters_per_cell": float(self.meters_per_cell),
+                        "snr": float(self.snr) if self.snr is not None else None,
+                        "fs_ms": float(self.fs_ms) if self.fs_ms is not None else None,
+                        "sources": self.sources.tolist() if hasattr(self, 'sources') and self.sources is not None else None,
+                        "receivers": self.recs.tolist() if hasattr(self, 'recs') and self.recs is not None else None,
+                        "v_base": float(np.mean(self.vel)),
+                        "device": self.device,
+                        "output_dir": tmp_dir,
+                        "save_wavefield": kwargs.get("save_wavefield", False),
+                    }
 
-                vel_file = os.path.join(tmp_dir, "vel.npy")
-                np.save(vel_file, self.vel)
-                cfg["vel_file"] = vel_file
+                    vel_file = os.path.join(tmp_dir, "vel.npy")
+                    np.save(vel_file, self.vel)
+                    cfg["vel_file"] = vel_file
 
-                res_cfg = os.path.join(tmp_dir, "config.json")
-                with open(res_cfg, "w") as f:
-                    import json
-                    json.dump(cfg, f)
+                    res_cfg = os.path.join(tmp_dir, "config.json")
+                    with open(res_cfg, "w") as f:
+                        import json
+                        json.dump(cfg, f)
 
-                run_gpu_simulation_dict(cfg)
+                    run_gpu_simulation_dict(cfg)
 
-                res_h5 = os.path.join(tmp_dir, "simulation_results.h5")
-                if os.path.exists(res_h5):
-                    with h5py.File(res_h5, "r") as f:
-                        self.shot_run = f["shots"][()]
-                        if "wavelet" in f:
-                            self.src = f["wavelet"][()]
-                else:
-                    raise RuntimeError("GPU Simulation failed to write simulation_results.h5")
-        else:
-            self._execute_pylops(ms)
-            if self.snr is not None:
-                self.apply_noise()
+                    res_h5 = os.path.join(tmp_dir, "simulation_results.h5")
+                    if os.path.exists(res_h5):
+                        with h5py.File(res_h5, "r") as f:
+                            self.shot_run = f["shots"][()]
+                            if "wavelet" in f:
+                                self.src = f["wavelet"][()]
+                    else:
+                        raise RuntimeError("GPU Simulation failed to write simulation_results.h5")
+            else:
+                self._execute_pylops(ms)
+                if self.snr is not None:
+                    self.apply_noise()
 
-        if self.fs_ms is not None and self.fs_ms > 0:
-            dt_model_ms = ms / (self.shot_run.shape[-1] - 1) if self.shot_run.shape[-1] > 1 else self.fs_ms
-            new_nt = int(np.round(ms / self.fs_ms)) + 1
-            t_orig = np.linspace(0, ms, self.shot_run.shape[-1])
-            t_new = np.linspace(0, ms, new_nt)
-            from scipy.interpolate import interp1d
-            f_interp = interp1d(t_orig, self.shot_run, axis=-1, kind="linear", fill_value="extrapolate")
-            resampled_shot_run = f_interp(t_new).astype(self.float_type)
-            del self.shot_run
-            import gc
-            gc.collect()
-            self.shot_run = resampled_shot_run
+            if self.fs_ms is not None and self.fs_ms > 0:
+                dt_model_ms = ms / (self.shot_run.shape[-1] - 1) if self.shot_run.shape[-1] > 1 else self.fs_ms
+                new_nt = int(np.round(ms / self.fs_ms)) + 1
+                t_orig = np.linspace(0, ms, self.shot_run.shape[-1])
+                t_new = np.linspace(0, ms, new_nt)
+                from scipy.interpolate import interp1d
+                f_interp = interp1d(t_orig, self.shot_run, axis=-1, kind="linear", fill_value="extrapolate")
+                resampled_shot_run = f_interp(t_new).astype(self.float_type)
+                del self.shot_run
+                import gc
+                gc.collect()
+                self.shot_run = resampled_shot_run
 
-        nelements_time = self.shot_run.shape[-1]
-        self.time_vector = np.linspace(0, ms, nelements_time) * (1e-3)
-        if len(self.time_vector) > 1:
-            self.dt = self.time_vector[1] - self.time_vector[0]
-        return self.shot_run
+            nelements_time = self.shot_run.shape[-1]
+            self.time_vector = np.linspace(0, ms, nelements_time) * (1e-3)
+            if len(self.time_vector) > 1:
+                self.dt = self.time_vector[1] - self.time_vector[0]
+            return self.shot_run
 
     def apply_gain(self, factor=2):
         if self.aop is not None:
@@ -481,7 +489,7 @@ class ShotRecord:
 
     def save_shot(self, name, overwrite=True):
         if os.path.exists(name) and not overwrite:
-            print(f"Existing folder with overwrite set to {overwrite} could not be created")
+            logger.warning(f"Folder '{name}' already exists and overwrite=False. Save aborted.")
             return
 
         os.makedirs(name, exist_ok=True)
@@ -509,8 +517,7 @@ class ShotRecord:
             if hasattr(self, 'snr') and self.snr is not None:
                 f.create_dataset("snr", data=self.snr)
 
-
-        print(f"Saved simulation files to folder {name}")
+        logger.info(f"Saved simulation dataset files to folder: {name}")
 
     def show_shot(self, cmap="seismic", cli=False, hq=False, source_idx=0):
         if self.shot_run is None:
@@ -619,49 +626,56 @@ class LoadShotRecord:
         self._load_shot(path)
 
     def _load_shot(self, path):
+        import os
+        import h5py
+        from shotgen.io import SegyIO
+
         if not os.path.isdir(path):
             raise ValueError(f"Path {path} is not a valid directory.")
 
-        traces_path = os.path.join(path, "traces.segy")
-        vel_path = os.path.join(path, "velocity_model.segy")
-        v0_path = os.path.join(path, "smooth_velocity.segy")
-        meta_path = os.path.join(path, "metadata.h5")
+        with log_execution_time(logger, f"LoadShotRecord dataset from '{path}'"):
+            traces_path = os.path.join(path, "traces.segy")
+            vel_path = os.path.join(path, "velocity_model.segy")
+            v0_path = os.path.join(path, "smooth_velocity.segy")
+            meta_path = os.path.join(path, "metadata.h5")
 
-        if os.path.exists(traces_path):
-            segy_data = SegyIO.read(traces_path)
-            self.receivers = segy_data["receivers"]
-            self.sources = segy_data["sources"]
-            flat_data = segy_data["data"]
-            n_traces, n_time = flat_data.shape
+            if os.path.exists(traces_path):
+                segy_data = SegyIO.read(traces_path)
+                self.receivers = segy_data["receivers"]
+                self.sources = segy_data["sources"]
+                flat_data = segy_data["data"]
+                n_traces, n_time = flat_data.shape
 
-            unique_sources = np.unique(np.round(self.sources, 3), axis=0)
-            n_sources = unique_sources.shape[0]
-            n_receivers = n_traces // n_sources
+                unique_sources = np.unique(np.round(self.sources, 3), axis=0)
+                n_sources = unique_sources.shape[0]
+                n_receivers = n_traces // n_sources
 
-            if n_sources * n_receivers == n_traces:
-                self.shots = flat_data.reshape((n_sources, n_receivers, n_time))
-            else:
-                self.shots = flat_data
-
-            self.nshots = n_sources
-
-        if os.path.exists(vel_path):
-            self.velocity_model, self.dx, self.dz = SegyIO.read_model(vel_path)
-        if os.path.exists(v0_path):
-            self.smooth_velocity, self.dx, self.dz = SegyIO.read_model(v0_path)
-
-        if os.path.exists(meta_path):
-            with h5py.File(meta_path, "r") as f:
-                if "time" in f:
-                    self.time = f["time"][()]
-                if "wavelet" in f:
-                    self.wavelet = f["wavelet"][()]
-                if "f0" in f:
-                    self.f0 = f["f0"][()]
-                if "snr" in f:
-                    self.snr = f["snr"][()]
+                if n_sources * n_receivers == n_traces:
+                    self.shots = flat_data.reshape((n_sources, n_receivers, n_time))
                 else:
-                    self.snr = None
+                    self.shots = flat_data
+
+                self.nshots = n_sources
+
+            if os.path.exists(vel_path):
+                self.velocity_model, self.dx, self.dz = SegyIO.read_model(vel_path)
+            if os.path.exists(v0_path):
+                self.smooth_velocity, self.dx, self.dz = SegyIO.read_model(v0_path)
+
+            if os.path.exists(meta_path):
+                with h5py.File(meta_path, "r") as f:
+                    if "time" in f:
+                        self.time = f["time"][()]
+                    if "wavelet" in f:
+                        self.wavelet = f["wavelet"][()]
+                    if "f0" in f:
+                        self.f0 = f["f0"][()]
+                    if "snr" in f:
+                        self.snr = f["snr"][()]
+                    else:
+                        self.snr = None
+
+            logger.info(f"Successfully loaded dataset '{path}': {self.nshots} shots | velocity grid {self.velocity_model.shape if self.velocity_model is not None else 'N/A'}")
 
     def plot(self, **kwargs):
         shots_stack = np.hstack([shot.T for shot in self.shots]).T

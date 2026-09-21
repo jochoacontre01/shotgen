@@ -1,57 +1,65 @@
 import os
+import logging
 import numpy as np
 import skfmm
 from tqdm import tqdm
 from joblib import Parallel, delayed
 from shotgen.io import SegyIO
+from shotgen.pylogger import get_logger, log_execution_time
+
+logger = get_logger("shotgen.migration.kirchhoff")
 
 
 def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None, verbose=True):
-    if verbose:
-        print(f"\n--- [load_dataset_dir] Starting SEGY file reading phase for dataset: '{dataset_dir}' ---")
+    with log_execution_time(logger, f"Load dataset SEGY files from '{dataset_dir}'", level=logging.INFO if verbose else logging.DEBUG):
+        if verbose:
+            logger.info(f"Starting SEGY dataset loading phase for: '{dataset_dir}'")
 
-    traces_path = os.path.join(dataset_dir, "traces.segy")
-    v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
-    vel_path = os.path.join(dataset_dir, "velocity_model.segy")
-    meta_path = os.path.join(dataset_dir, "metadata.h5")
+        traces_path = os.path.join(dataset_dir, "traces.segy")
+        v0_path = os.path.join(dataset_dir, "smooth_velocity.segy")
+        vel_path = os.path.join(dataset_dir, "velocity_model.segy")
+        meta_path = os.path.join(dataset_dir, "metadata.h5")
 
-    if os.path.exists(v0_path):
-        vp, dx, dz = SegyIO.read_model(v0_path, verbose=verbose)
-    elif os.path.exists(vel_path):
-        vp, dx, dz = SegyIO.read_model(vel_path, verbose=verbose)
-    else:
-        raise FileNotFoundError(f"smooth_velocity.segy not found (nor velocity_model.segy) in {dataset_dir}")
+        if os.path.exists(v0_path):
+            logger.debug(f"Reading smooth velocity model from: {v0_path}")
+            vp, dx, dz = SegyIO.read_model(v0_path, verbose=verbose)
+        elif os.path.exists(vel_path):
+            logger.debug(f"Reading true velocity model from: {vel_path}")
+            vp, dx, dz = SegyIO.read_model(vel_path, verbose=verbose)
+        else:
+            raise FileNotFoundError(f"smooth_velocity.segy not found (nor velocity_model.segy) in {dataset_dir}")
 
-    segy_data = SegyIO.read(traces_path, verbose=verbose)
-    receivers = segy_data["receivers"]
-    sources = segy_data["sources"]
-    time = segy_data["time"]
+        segy_data = SegyIO.read(traces_path, verbose=verbose)
+        receivers = segy_data["receivers"]
+        sources = segy_data["sources"]
+        time = segy_data["time"]
 
-    flat_data = segy_data["data"]
-    n_traces, n_time = flat_data.shape
+        flat_data = segy_data["data"]
+        n_traces, n_time = flat_data.shape
 
-    unique_src = np.unique(np.round(sources, 3), axis=0)
-    n_sources = unique_src.shape[0]
-    n_receivers = n_traces // n_sources
+        unique_src = np.unique(np.round(sources, 3), axis=0)
+        n_sources = unique_src.shape[0]
+        n_receivers = n_traces // n_sources
 
-    shots = flat_data.reshape((n_sources, n_receivers, n_time))
-    sources = sources.reshape((n_sources, n_receivers, 2))[:, 0, :]
-    receivers = receivers.reshape((n_sources, n_receivers, 2))
+        shots = flat_data.reshape((n_sources, n_receivers, n_time))
+        sources = sources.reshape((n_sources, n_receivers, 2))[:, 0, :]
+        receivers = receivers.reshape((n_sources, n_receivers, 2))
 
-    f0 = provided_f0
-    if os.path.exists(meta_path) and f0 is None:
-        import h5py
-        with h5py.File(meta_path, "r") as f:
-            if "f0" in f:
-                f0 = f["f0"][()]
+        f0 = provided_f0
+        if os.path.exists(meta_path) and f0 is None:
+            import h5py
+            with h5py.File(meta_path, "r") as f:
+                if "f0" in f:
+                    f0 = f["f0"][()]
+                    logger.debug(f"Loaded peak frequency f0={f0} Hz from {meta_path}")
 
-    if require_f0 and f0 is None:
-        raise ValueError(f"f0 is required for RTM but was not found in {meta_path} and not provided as an argument.")
+        if require_f0 and f0 is None:
+            raise ValueError(f"f0 is required for RTM but was not found in {meta_path} and not provided as an argument.")
 
-    if verbose:
-        print(f"--- [load_dataset_dir] Completed reading phase: {n_sources} shots x {n_receivers} receivers ({n_traces:,} traces) | Velocity grid {vp.shape[0]}x{vp.shape[1]} ---\n")
+        if verbose:
+            logger.info(f"Loaded dataset '{dataset_dir}': {n_sources} shots x {n_receivers} receivers ({n_traces:,} traces) | Velocity grid {vp.shape[0]}x{vp.shape[1]}")
 
-    return vp, sources, receivers, shots, time, f0, dx, dz
+        return vp, sources, receivers, shots, time, f0, dx, dz
 
 
 def _process_single_shot(
@@ -190,14 +198,20 @@ class KirchhoffMigration:
                 all_coords.append((rx, rz))
 
         self.unique_coords = list(set(all_coords))
+        logger.debug(f"Collected {len(self.unique_coords)} unique coordinate points for traveltime calculation.")
 
     def _setup_solver(self):
-        computed_fields = Parallel(n_jobs=self.n_jobs, backend=self.backend)(
-            delayed(self.compute_single_traveltime_field)(c, self.vp, self.spacing[0], self.spacing[1])
-            for c in self.unique_coords
-        )
-        self.traveltime_dict = {coord: field for coord, field in zip(self.unique_coords, computed_fields)}
-        self.output = np.zeros_like(self.vp)
+        effective_n_jobs = -1 if self.n_jobs is None else self.n_jobs
+        n_fields = len(self.unique_coords)
+        logger.info(f"Computing {n_fields} Eikonal traveltime fields using {effective_n_jobs} jobs (backend='{self.backend}')...")
+
+        with log_execution_time(logger, f"Computing Eikonal traveltimes ({n_fields} fields, jobs={effective_n_jobs})"):
+            computed_fields = Parallel(n_jobs=effective_n_jobs, backend=self.backend)(
+                delayed(self.compute_single_traveltime_field)(c, self.vp, self.spacing[0], self.spacing[1])
+                for c in tqdm(self.unique_coords, desc="Computing Eikonal Fields", total=n_fields)
+            )
+            self.traveltime_dict = {coord: field for coord, field in zip(self.unique_coords, computed_fields)}
+            self.output = np.zeros_like(self.vp)
 
     def compute_single_traveltime_field(self, coord, vp, dx, dz):
         phi = np.ones_like(vp)
@@ -217,31 +231,32 @@ class KirchhoffMigration:
 
         n_sources = len(self.sources)
 
-        if effective_n_jobs == 1:
-            shot_images = []
-            iterator = range(n_sources)
-            if show_progress:
-                iterator = tqdm(iterator, desc="Kirchhoff PSDM Source", total=n_sources)
-            for si in iterator:
-                img = _process_single_shot(
-                    si, self.sources[si], self.receivers, self.shots[si],
-                    self.vp.shape, self.origin, self.spacing, self.time,
-                    self.traveltime_dict, X, Z
+        with log_execution_time(logger, f"Kirchhoff PSDM ({n_sources} shots, jobs={effective_n_jobs})"):
+            if effective_n_jobs == 1:
+                shot_images = []
+                iterator = range(n_sources)
+                if show_progress:
+                    iterator = tqdm(iterator, desc="Kirchhoff PSDM Source", total=n_sources)
+                for si in iterator:
+                    img = _process_single_shot(
+                        si, self.sources[si], self.receivers, self.shots[si],
+                        self.vp.shape, self.origin, self.spacing, self.time,
+                        self.traveltime_dict, X, Z
+                    )
+                    shot_images.append(img)
+            else:
+                source_range = tqdm(range(n_sources), desc="Kirchhoff PSDM Source", total=n_sources) if show_progress else range(n_sources)
+                shot_images = Parallel(n_jobs=effective_n_jobs, backend=effective_backend)(
+                    delayed(_process_single_shot)(
+                        si, self.sources[si], self.receivers, self.shots[si],
+                        self.vp.shape, self.origin, self.spacing, self.time,
+                        self.traveltime_dict, X, Z
+                    )
+                    for si in source_range
                 )
-                shot_images.append(img)
-        else:
-            source_range = tqdm(range(n_sources), desc="Kirchhoff PSDM Source", total=n_sources) if show_progress else range(n_sources)
-            shot_images = Parallel(n_jobs=effective_n_jobs, backend=effective_backend)(
-                delayed(_process_single_shot)(
-                    si, self.sources[si], self.receivers, self.shots[si],
-                    self.vp.shape, self.origin, self.spacing, self.time,
-                    self.traveltime_dict, X, Z
-                )
-                for si in source_range
-            )
 
-        self.output = np.sum(shot_images, axis=0)
-        return self.output
+            self.output = np.sum(shot_images, axis=0)
+            return self.output
 
 
 
