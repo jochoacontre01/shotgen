@@ -267,6 +267,11 @@ class ShotRecord:
 
 
     def show_model(self, draw_recs=True, cli=False, hq=False, **kwargs):
+        if cli:
+            try:
+                plt.switch_backend("Agg")
+            except Exception:
+                pass
         if not self._model_ready and (not hasattr(self, "vel") or self.vel is None):
             raise ValueError("You need to create a model first")
 
@@ -520,6 +525,11 @@ class ShotRecord:
         logger.info(f"Saved simulation dataset files to folder: {name}")
 
     def show_shot(self, cmap="seismic", cli=False, hq=False, source_idx=0):
+        if cli:
+            try:
+                plt.switch_backend("Agg")
+            except Exception:
+                pass
         if self.shot_run is None:
             print("No simulation data available to show.")
             return
