@@ -1,11 +1,15 @@
 import os
 import logging
+from time import sleep
 import numpy as np
 import skfmm
 from tqdm import tqdm
 from joblib import Parallel, delayed
 from shotgen.io import SegyIO
 from shotgen.pylogger import get_logger, log_execution_time
+from scipy.ndimage import gaussian_filter
+import subprocess
+import matplotlib.pyplot as plt
 
 logger = get_logger("shotgen.migration.kirchhoff")
 
@@ -143,6 +147,8 @@ class KirchhoffMigration:
         dataset_dir: str = None,
         n_jobs: int = -1,
         backend: str = "threading",
+        smooth_sigma: float = None,
+        cli: bool = False,
     ):
         origin = (0.0, 0.0)
         if dataset_dir is not None:
@@ -163,7 +169,10 @@ class KirchhoffMigration:
             receivers[..., 0] = (receivers[..., 0] - origin[0]) / dx
             receivers[..., 1] = (receivers[..., 1] - origin[1]) / dz
 
-        self.vp = vp
+        if smooth_sigma is not None:
+            self.vp = gaussian_filter(vp, sigma=smooth_sigma)
+        else:
+            self.vp = vp
         self.sources = sources
         self.receivers = receivers
         self.shots = shots
@@ -172,7 +181,20 @@ class KirchhoffMigration:
         self.origin = origin
         self.n_jobs = n_jobs
         self.backend = backend
+        self.cli = cli
         self.model = KirchhoffModel(shape=self.vp.shape, origin=self.origin)
+        plt.figure(figsize=(10,5))
+        plt.imshow(self.vp.T, cmap="gray", aspect="auto")
+        plt.colorbar()
+        plt.tight_layout()
+        print(self.cli)
+        if self.cli:
+            plt.savefig("img.png")
+            subprocess.run("chafa img.png".split())
+            sleep(0.25)
+            subprocess.run("rm img.png".split())
+        else:
+            plt.show(block=True)
 
         self._gather_unique_coords()
         self._setup_solver()
@@ -221,6 +243,7 @@ class KirchhoffMigration:
         return skfmm.travel_time(phi, vp, dx=[dx, dz])
 
     def run(self, n_jobs: int = None, backend: str = None, show_progress: bool = True):
+
         effective_n_jobs = self.n_jobs if n_jobs is None else n_jobs
         effective_backend = self.backend if backend is None else backend
 
