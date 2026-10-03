@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 import numpy as np
 import matplotlib.pyplot as plt
 import cmocean
@@ -14,7 +16,7 @@ def main(cli=False, file=None):
     if file is not None:
         shotpath = Path(__file__).resolve().parents[1] / file
     else:
-        raise ValueError("No data file was passed to the arguments, pass it with 'rtm_from_data.py -f path/to/file")
+        raise ValueError("No data file was passed to the arguments, pass it with 'rtm_from_data.py path/to/file")
     print(f"Loading shot record from: {shotpath}")
     
     nbl = 200
@@ -31,14 +33,15 @@ def main(cli=False, file=None):
 
     # 5. Execute run method
     print("Running Reverse Time Migration...")
-    migrated_image = rtm.run(save_wavefield=False)
+    migrated_image = rtm.run(save_wavefield=False, verbose=True, cli=cli)
 
-    # 6. Post-process and Plotttinh
+    # 6. Post-process and Plotting
     # Apply Laplace filter to the migrated image to remove low-frequency acquisition footprints.
     lap_image = laplace(migrated_image)
     
     # Exclude boundary (nbl) for plotting
     plotted_image = lap_image[nbl:-nbl, nbl:-nbl]
+    np.save(shotpath / 'rtm_migrated.npy', migrated_image)
    
     # np.save("rtm.npy", plotted_image)
     # Compute display extent in meters
@@ -54,10 +57,16 @@ def main(cli=False, file=None):
     # vmax = np.quantile(laplace(plotted_image), 0.85)
     # vmin = min(vmin, -1e-10)
     # vmax = max(vmax, 1e-10)
-    vmin = np.min(lap_image)
-    vmax = np.max(lap_image)
+    vmin = np.min(plotted_image)
+    vmax = np.max(plotted_image)
     norm = TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax)
     print("Plotting results...")
+    print(f"""  Shape: {plotted_image.shape},
+    Maximum value: {np.amax(plotted_image)},
+    Minimum value: {np.amin(plotted_image)},
+    Average value: {np.mean(plotted_image)},
+    Standard deviation: {np.std(plotted_image)}
+    """)
     plt.figure(figsize=(10, 5))
     im = plt.imshow(
         plotted_image.T,
@@ -78,7 +87,7 @@ def main(cli=False, file=None):
         plt.savefig("img.png")
         subprocess.run("chafa -w 9 img.png".split())
         time.sleep(0.5)
-        subprocess.run("rm img.png".split())
+        # subprocess.run("rm img.png".split())
     else:
         plt.show()
 

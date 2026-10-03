@@ -39,11 +39,13 @@ else:
 
 migrator = KirchhoffMigration(
     dataset_dir=shotpath,
-    spacing=(dx_spacing, dz_spacing)
+    spacing=(dx_spacing, dz_spacing),
+    smooth_sigma = 15.0,
+    cli = args.cli
 )
 
 image = migrator.run()
-np.save(f"data/migrated/{shotpath.name}_Kirchhoff_migrated.npy", image)
+np.save(f"{shotpath}/kirchhoff_migrated.npy", image)
 
 
 model = migrator.model
