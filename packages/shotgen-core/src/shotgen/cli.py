@@ -1,10 +1,6 @@
 import os
 import sys
 
-# Configure Matplotlib non-interactive backend before any imports load matplotlib.pyplot
-os.environ.setdefault("MPLBACKEND", "Agg")
-import matplotlib
-matplotlib.use("Agg")
 
 import json
 import argparse
