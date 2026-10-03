@@ -2,11 +2,15 @@ import os
 import numpy as np
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter
+from scipy.interpolate import interp1d
 from devito import TimeFunction, Operator, Eq, solve, Function
 from examples.seismic import AcquisitionGeometry, PointSource, Model
 from examples.seismic.acoustic import AcousticWaveSolver
 from shotgen_gpu.config import configure_devito_device
-
+import sys
+import subprocess
+import matplotlib.pyplot as plt
+import time
 
 def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None, verbose=True):
     """Helper to load dataset for Devito GPU RTM."""
@@ -144,8 +148,9 @@ class ReverseTimeMigration:
             n_sources = sources.shape[0]
             n_receivers = receivers.shape[1] if receivers.ndim == 3 else receivers.shape[0]
 
-            t0 = time[0] * 1000.0 if time[0] <= 10.0 else time[0]
-            tn = time[-1] * 1000.0 if time[-1] <= 10.0 else time[-1]
+            is_seconds = (len(time) > 1 and (time[1] - time[0]) < 0.1) or (time[-1] < 100.0)
+            t0 = time[0] * 1000.0 if is_seconds else time[0]
+            tn = time[-1] * 1000.0 if is_seconds else time[-1]
         else:
             n_sources = args[0] if len(args) > 0 else kwargs.get("n_sources")
             n_receivers = args[1] if len(args) > 1 else kwargs.get("n_receivers")
@@ -187,17 +192,24 @@ class ReverseTimeMigration:
             self.receivers = receivers
             self.shots = np.transpose(shots, (0, 2, 1)).astype(self.dtype)
             self._create_geometry()
-            dt_data = (time[1] - time[0]) * 1000.0 if (time[1] - time[0]) <= 1.0 else (time[1] - time[0])
-            self.geometry.resample(dt_data)
+            dt_data = (time[1] - time[0]) * 1000.0 if is_seconds else (time[1] - time[0])
+            # self.geometry.resample(dt_data)
+
 
             nt_target = self.geometry.nt
             nt_actual = self.shots.shape[1]
             if nt_actual != nt_target:
                 if nt_actual < nt_target:
-                    padding = np.zeros((self.shots.shape[0], nt_target - nt_actual, self.shots.shape[2]), dtype=self.shots.dtype)
-                    self.shots = np.concatenate([self.shots, padding], axis=1)
+                    print(f"Operation interp1d performed for initial nt of shape {nt_actual} to shape {nt_target}")
+                    t_actual = np.linspace(self.t0, self.tn, self.shots.shape[1])
+                    t_target = np.linspace(self.t0, self.tn, self.geometry.nt)
+                    interp_fn = interp1d(t_actual, self.shots, axis=1, kind="linear", fill_value="extrapolate")
+                    self.shots = interp_fn(t_target).astype(self.dtype)
+                    # padding = np.zeros((self.shots.shape[0], nt_target - nt_actual, self.shots.shape[2]), dtype=self.shots.dtype)
+                    # self.shots = np.concatenate([self.shots, padding], axis=1)
                 else:
                     self.shots = self.shots[:, :nt_target, :]
+
         else:
             source_locations = np.empty((self.n_sources, 2), dtype=self.dtype)
             source_locations[:, 0] = self.origin[0] + np.linspace(0, self.model.domain_size[0], num=self.n_sources)
@@ -210,7 +222,7 @@ class ReverseTimeMigration:
             self.receivers = rec_locations
 
             self._create_geometry()
-
+        self.shots = np.ascontiguousarray(self.shots)
         self._setup_solver()
 
     def _create_model(self):
@@ -239,26 +251,62 @@ class ReverseTimeMigration:
     def _setup_solver(self):
         self.solver = AcousticWaveSolver(self.model, self.geometry, space_order=self.space_order, time_order=self.time_order)
 
-    def run(self, save_wavefield=False, save_each=5):
+    def run(self, save_wavefield=False, save_each=5, verbose=True, cli=False):
+        #if verbose:
+        #    logger.setLevel(logging.INFO)
         if self.from_data:
+            print(f"Running RTM from data (Backend: {plt.get_backend()})")
+
+            non_zero_damp = (self.model0.damp.data > 0)
+            self.model.damp.data[:] = 0.0
+            self.model0.damp.data[:] = 0.0
+            rng = np.random.default_rng(seed=42)
+            rand_damp = rng.uniform(0.7, 1.3, size=self.model0.vp.data.shape)
+            self.model0.vp.data[non_zero_damp] *= rand_damp[non_zero_damp]
+
+            print("Shots shape: ", self.shots.shape)
+            print("nt: ", self.geometry.nt)
+            print("dt: ", self.geometry.dt)
+            print(type(self.geometry.src)) # RickerSource
+
+            plt.figure(figsize=(8, 6))
+            plt.imshow(self.model0.vp.data.T, aspect="auto", cmap="grey_r")
+            # plt.plot(self.model0.vp.data.T[1000,:100])
+            # plt.plot(damp_random[:,200])
+            plt.title("Damping Layer (self.model.damp)")
+            plt.colorbar(label="Damping value")
+            plt.tight_layout()
+            if cli:
+                plt.savefig("damp_preview.png")
+                subprocess.run("chafa damp_preview.png".split())
+                time.sleep(0.5)
+                if os.path.exists("damp_preview.png"):
+                    os.remove("damp_preview.png")
+            
+                
+            else:
+                plt.show(block=True)
+            # sys.exit()
             us, vs = [], []
             image = Function(name="image", grid=self.model.grid)
             operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
 
-            for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
+            each = 1
+            print(self.n_sources//each)
+            for i in tqdm(range(self.n_sources//each), desc="Source", total=self.n_sources//each):
                 self.geometry.src_positions[0, :] = self.sources[i, :]
-                self.geometry.src.coordinates.data[0, :] = self.sources[i, :]
+                self.source.coordinates.data[0, :] = self.sources[i, :]
 
                 current_recs = self.receivers[i] if self.receivers.ndim == 3 else self.receivers
                 self.geometry.rec.coordinates.data[:, :] = current_recs
                 self.residual_source.coordinates.data[:, :] = current_recs
 
-                _, u0, _ = self.solver.forward(vp=self.model0.vp, save=True, dt=self.geometry.dt)
-
+                _, u0, _ = self.solver.forward(vp=self.model0.vp, save=None, dt=self.geometry.dt)
+               
                 if save_wavefield:
                     v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
                 else:
-                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=None)
 
                 operator(u=u0, v=v, vp=self.model0.vp, dt=self.geometry.dt, residual=self.shots[i])
 
@@ -285,7 +333,7 @@ class ReverseTimeMigration:
                 if save_wavefield:
                     v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
                 else:
-                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order)
+                    v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=None)
 
                 residual = smooth_d.data - true_d.data
                 shots.append(residual)
@@ -305,18 +353,30 @@ class ReverseTimeMigration:
         if save_wavefield:
             v = TimeFunction(name="v", grid=model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
         else:
-            v = TimeFunction(name="v", grid=model.grid, time_order=self.time_order, space_order=self.space_order)
+            v = TimeFunction(name="v", grid=model.grid, time_order=self.time_order, space_order=self.space_order, save=None)
 
-        u = TimeFunction(name="u", grid=model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
-        eqn = model.m * v.dt2 - v.laplace + model.damp * v.dt
-        stencil = Eq(v.backward, solve(eqn, v.backward))
+        u = TimeFunction(name="u", grid=model.grid, time_order=self.time_order, space_order=self.space_order, save=None) 
+        eqn_u = model.m * u.dt2 - u.laplace
+        stencil_u = Eq(u.backward, solve(eqn_u, u.backward))
+
+        eqn_v = model.m * v.dt2 - v.laplace #+ model.damp * v.dt.T
+        stencil_v = Eq(v.backward, solve(eqn_v, v.backward))
         dt = model.grid.stepping_dim.spacing
 
+        self.source = self.geometry.src
+        src_sub = self.source.inject(
+            field=u.backward,
+            expr=-self.source * dt**2 / model.m
+        )
+
         self.residual_source = PointSource(name="residual", grid=model.grid, time_range=self.geometry.time_axis, coordinates=self.geometry.rec_positions)
-        res_term = self.residual_source.inject(field=v.backward, expr=self.residual_source*dt**2/model.m)
+        res_term = self.residual_source.inject(
+            field=v.backward,
+            expr=self.residual_source * dt**2 / model.m
+        )
         image_update = Eq(image, image+u*v)
 
-        return Operator([stencil] + res_term + [image_update], subs=model.spacing_map)
+        return Operator([stencil_u, stencil_v] + src_sub + res_term + [image_update], subs=model.spacing_map)
 
     @property
     def src(self):

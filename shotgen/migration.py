@@ -187,9 +187,10 @@ class ReverseTimeMigration:
             n_sources = sources.shape[0]
             n_receivers = receivers.shape[1] if receivers.ndim == 3 else receivers.shape[0]
             
-            # Convert time vector (seconds) to ms
-            t0 = time[0] * 1000.0
-            tn = time[-1] * 1000.0
+            # Convert time vector to ms (detecting seconds vs ms)
+            is_seconds = (len(time) > 1 and (time[1] - time[0]) < 0.1) or (time[-1] < 100.0)
+            t0 = time[0] * 1000.0 if is_seconds else time[0]
+            tn = time[-1] * 1000.0 if is_seconds else time[-1]
         else:
             # Simulation signature: parse n_sources, n_receivers, origin, t0, tn from positional args or kwargs.
             # Other parameters like spacing, nbl, smooth_sigma, f0, space_order, time_order, dtype are already
@@ -247,7 +248,7 @@ class ReverseTimeMigration:
             self._create_geometry()
             
             # Resample geometry to the dataset's dt (in ms)
-            dt_data = (time[1] - time[0]) * 1000.0
+            dt_data = (time[1] - time[0]) * 1000.0 if is_seconds else (time[1] - time[0])
             self.geometry.resample(dt_data)
             
             # Align self.shots time dimension with self.geometry.nt to avoid Devito time_size mismatch
@@ -318,8 +319,11 @@ class ReverseTimeMigration:
     def _setup_solver(self):
         self.solver = AcousticWaveSolver(self.model, self.geometry, space_order=self.space_order, time_order=self.time_order)
 
-    def run(self, save_wavefield=False, save_each=5):
+    def run(self, save_wavefield=False, save_each=5, verbose=False, cli=False):
+        if verbose:
+            logger.setLevel(logging.INFO)
         if self.from_data:
+            logger.info("Running RTM from data") 
             us = []
             vs = []
             image = Function(name="image", grid=self.model.grid)
@@ -352,6 +356,7 @@ class ReverseTimeMigration:
             self.image = image.data
             return self.image
         else:
+            logger.info("Running RTM not from data")
             shots = []
             us = []
             vs = []
