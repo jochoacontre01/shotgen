@@ -269,7 +269,7 @@ class ReverseTimeMigration:
             print("dt: ", self.geometry.dt)
             print(type(self.geometry.src)) # RickerSource
 
-            plt.figure(figsize=(8, 6))
+            plt.figure(figsize=(10, 5))
             plt.imshow(self.model0.vp.data.T, aspect="auto", cmap="grey_r")
             # plt.plot(self.model0.vp.data.T[1000,:100])
             # plt.plot(damp_random[:,200])
