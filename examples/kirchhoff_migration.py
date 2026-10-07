@@ -11,6 +11,9 @@ import cmocean
 from scipy.ndimage import laplace
 
 from shotgen.migration import KirchhoffMigration
+from shotgen.pylogger import get_logger, setup_file_logging
+
+logger = get_logger("kirchhoff_migration")
 
 
 def main():
@@ -34,6 +37,8 @@ def main():
     else:
         raise ValueError("No data file was passed to the arguments, pass it with 'kirchhoff_migration.py path/to/file'")
 
+    setup_file_logging(dataset_dir=shotpath, script_name="kirchhoff_migration", logger=logger)
+
     name = shotpath.name
     dx_match = re.search(r'_(\d+(?:\.\d+)?)dx_', name)
     dz_match = re.search(r'_(\d+(?:\.\d+)?)dz_', name)
@@ -50,6 +55,15 @@ def main():
         dxdz_match = re.search(r'_(\d+(?:\.\d+)?)dxdz_', name)
         dz_spacing = float(dxdz_match.group(1)) if dxdz_match else 10.0
 
+    logger.info(
+        "Running Kirchhoff PSDM on dataset: %s (dx=%.2fm, dz=%.2fm, jobs=%s, batch_size=%d)",
+        shotpath,
+        dx_spacing,
+        dz_spacing,
+        args.jobs,
+        args.batch_size,
+    )
+
     migrator = KirchhoffMigration(
         dataset_dir=str(shotpath),
         spacing=(dx_spacing, dz_spacing),
@@ -63,11 +77,14 @@ def main():
     output_npy = shotpath / "kirchhoff_migrated.npy"
     try:
         np.save(output_npy, image)
-        print(f"Saved migrated image to: {output_npy}")
+        logger.info("Saved migrated image to: %s", output_npy)
     except OSError:
         fallback_npy = Path("/tmp") / f"{name}_kirchhoff_migrated.npy"
         np.save(fallback_npy, image)
-        print(f"Dataset directory is read-only; saved migrated image to fallback path: {fallback_npy}")
+        logger.warning(
+            "Dataset directory is read-only; saved migrated image to fallback path: %s",
+            fallback_npy,
+        )
 
     model = migrator.model
     plt.figure(figsize=(10, 5))

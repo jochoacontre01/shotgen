@@ -138,6 +138,19 @@ Prioritize multiprocessing over multithreading for CPU-heavy modeling and travel
 - **Mandatory `__main__` Guards**: All CLI scripts and entrypoints invoking multiprocessing or batch migration **must** guard execution inside `if __name__ == "__main__":` to prevent child processes from recursively re-executing workflows.
 - **Active-Window Caching & In-Place Stacking**: For Kirchhoff PSDM, always use active-window lifecycle caching (evicting coordinates after their last required shot) and stream shot summation directly in-place (`output += shot_img`) to maintain a bounded memory footprint (~3-4 GB).
 
+### 5. Migration Execution Logging & Run Logs
+All migration entrypoints and workflows (including `examples/kirchhoff_migration.py` and `examples/rtm_from_data.py`) must persist execution logs directly in the target dataset directory:
+- **Log Location & Naming Convention**:
+  - The log file must reside in the active dataset directory (`<dataset_dir>/`).
+  - Naming template: `<script_name>_%Y%m%d_%H%M%S.log` (e.g., `kirchhoff_migration_20261006_224500.log` or `rtm_from_data_20261006_224500.log`), where `%Y%m%d_%H%M%S` records the start date and time of the run.
+- **Centralized Logging Setup**:
+  - Initialize file logging immediately upon resolving the dataset path using `shotgen.pylogger.setup_file_logging(dataset_dir, script_name, logger=logger)`.
+  - This attaches a standard `logging.FileHandler` to the logger hierarchy so all submodule operations (e.g., `shotgen.migration.kirchhoff`, `shotgen.io.segy`, `shotgen.models`) stream to both the console (via `TqdmLoggingHandler`) and the dataset log file simultaneously.
+- **Strict Prohibition of Bare `print()`**:
+  - All status updates, timing metrics, and array diagnostics must pass through `logger.info()`, `logger.warning()`, or `logger.error()` instead of bare `print()` statements to ensure they are captured in the log file.
+- **Read-Only / Unwritable Directory Fallback**:
+  - If the dataset directory is read-only or lacks write permissions, file logging must automatically fall back to `/tmp/<dataset_name>_<script_name>_%Y%m%d_%H%M%S.log` and issue a warning, preventing permission crashes during execution on shared or protected volumes.
+
 ---
 
 ## 5. Data Management & Safety

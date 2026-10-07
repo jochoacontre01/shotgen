@@ -7,17 +7,26 @@ from pathlib import Path
 from scipy.ndimage import laplace
 from shotgen.sampleshot import LoadShotRecord
 from shotgen.migration import ReverseTimeMigration
+from shotgen.pylogger import get_logger, setup_file_logging
 import argparse
 import subprocess
 import time
+
+logger = get_logger("rtm_from_data")
 
 def main(cli=False, file=None):
     # 1. Locate and load the Sigsbee shot record file
     if file is not None:
         shotpath = Path(__file__).resolve().parents[1] / file
+        if not shotpath.exists():
+            data_shotpath = Path(__file__).resolve().parents[1] / "data" / file
+            if data_shotpath.exists():
+                shotpath = data_shotpath
     else:
         raise ValueError("No data file was passed to the arguments, pass it with 'rtm_from_data.py path/to/file")
-    print(f"Loading shot record from: {shotpath}")
+    
+    setup_file_logging(dataset_dir=shotpath, script_name="rtm_from_data", logger=logger)
+    logger.info("Loading shot record from: %s", shotpath)
     
     nbl = 200
 
@@ -32,7 +41,7 @@ def main(cli=False, file=None):
     dx_spacing, dz_spacing = rtm.spacing
 
     # 5. Execute run method
-    print("Running Reverse Time Migration...")
+    logger.info("Running Reverse Time Migration...")
     migrated_image = rtm.run(save_wavefield=False, verbose=True, cli=cli)
 
     # 6. Post-process and Plotting
@@ -41,7 +50,17 @@ def main(cli=False, file=None):
     
     # Exclude boundary (nbl) for plotting
     plotted_image = lap_image[nbl:-nbl, nbl:-nbl]
-    np.save(shotpath / 'rtm_migrated.npy', migrated_image)
+    output_npy = shotpath / 'rtm_migrated.npy'
+    try:
+        np.save(output_npy, migrated_image)
+        logger.info("Saved migrated image to: %s", output_npy)
+    except OSError:
+        fallback_npy = Path("/tmp") / f"{shotpath.name}_rtm_migrated.npy"
+        np.save(fallback_npy, migrated_image)
+        logger.warning(
+            "Dataset directory is read-only; saved migrated image to fallback path: %s",
+            fallback_npy,
+        )
    
     # np.save("rtm.npy", plotted_image)
     # Compute display extent in meters
@@ -60,13 +79,15 @@ def main(cli=False, file=None):
     vmin = np.min(plotted_image)
     vmax = np.max(plotted_image)
     norm = TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax)
-    print("Plotting results...")
-    print(f"""  Shape: {plotted_image.shape},
-    Maximum value: {np.amax(plotted_image)},
-    Minimum value: {np.amin(plotted_image)},
-    Average value: {np.mean(plotted_image)},
-    Standard deviation: {np.std(plotted_image)}
-    """)
+    logger.info("Plotting results...")
+    logger.info(
+        "Image stats - Shape: %s, Max: %s, Min: %s, Mean: %s, Std: %s",
+        plotted_image.shape,
+        np.amax(plotted_image),
+        np.amin(plotted_image),
+        np.mean(plotted_image),
+        np.std(plotted_image),
+    )
     plt.figure(figsize=(10, 5))
     im = plt.imshow(
         plotted_image.T,
