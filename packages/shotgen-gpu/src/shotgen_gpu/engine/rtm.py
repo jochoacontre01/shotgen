@@ -258,18 +258,25 @@ class ReverseTimeMigration:
             print(f"Running RTM from data (Backend: {plt.get_backend()})")
 
             non_zero_damp = (self.model0.damp.data > 0)
+            damp_max = np.max(self.model0.damp.data)
+            damp_min = np.min(self.model0.damp.data)
+            damp_normalized = (self.model0.damp.data - damp_min) / (damp_max - damp_min) if damp_max > damp_min else np.zeros_like(self.model0.damp.data)
             self.model.damp.data[:] = 0.0
             self.model0.damp.data[:] = 0.0
             rng = np.random.default_rng(seed=42)
-            rand_damp = rng.uniform(0.7, 1.3, size=self.model0.vp.data.shape)
-            self.model0.vp.data[non_zero_damp] *= rand_damp[non_zero_damp]
+            rand_damp = rng.uniform(np.min(self.model0.vp.data), np.max(self.model0.vp.data), size=self.model0.vp.data.shape)
+            
+            # Smooth transition from base velocity to random velocity across the boundary zone
+            w = damp_normalized[non_zero_damp]
+            self.model0.vp.data[non_zero_damp] = (1.0 - w) * self.model0.vp.data[non_zero_damp] + w * rand_damp[non_zero_damp]
+            self.model.vp.data[non_zero_damp] = self.model0.vp.data[non_zero_damp]
 
             print("Shots shape: ", self.shots.shape)
             print("nt: ", self.geometry.nt)
             print("dt: ", self.geometry.dt)
             print(type(self.geometry.src)) # RickerSource
 
-            plt.figure(figsize=(8, 6))
+            plt.figure(figsize=(10, 5))
             plt.imshow(self.model0.vp.data.T, aspect="auto", cmap="grey_r")
             # plt.plot(self.model0.vp.data.T[1000,:100])
             # plt.plot(damp_random[:,200])
