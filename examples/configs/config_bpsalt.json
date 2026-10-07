@@ -6,9 +6,9 @@
     "dx": 12.5,
     "dz": 6.25,
     "max_size": [25000.0, 11875.0],
-    "n_sources": 100.0,
-    "n_receivers": 100.0,
-    "ms": 12000.0,
+    "n_sources": 200.0,
+    "n_receivers": 96.0,
+    "ms": 15000.0,
     "f0": 15.0,
     "src_origin": [
         0.0,

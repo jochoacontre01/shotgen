@@ -6,7 +6,13 @@ from .migration import KirchhoffMigration, KirchhoffModel, load_dataset_dir
 from .runner import run_gpu_simulation
 
 from .utils import generate_simulation_dir_name
-from .pylogger import get_logger, TqdmLoggingHandler, log_execution_time
+from .pylogger import (
+    get_logger,
+    TqdmLoggingHandler,
+    log_execution_time,
+    add_file_handler,
+    setup_file_logging,
+)
 
 __all__ = [
     "ShotRecord",
@@ -27,6 +33,8 @@ __all__ = [
     "get_logger",
     "TqdmLoggingHandler",
     "log_execution_time",
+    "add_file_handler",
+    "setup_file_logging",
 ]
 
 
