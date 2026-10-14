@@ -95,6 +95,7 @@ def _process_single_shot(
     X: np.ndarray = None,
     Z: np.ndarray = None,
     dtype: type = np.float32,
+    wavelet_delay: float = 0.0,
 ) -> np.ndarray:
     """Computes depth migration image contribution for a single shot."""
     nx, nz = vp_shape
@@ -122,7 +123,7 @@ def _process_single_shot(
         rx_idx = int(np.clip(np.round(rec_coord[0]), 0, nx - 1))
         rz_idx = int(np.clip(np.round(rec_coord[1]), 0, nz - 1))
         traveltime_r = traveltime_dict[(rx_idx, rz_idx)]
-        total_traveltime = traveltime_s + traveltime_r
+        total_traveltime = traveltime_s + traveltime_r + dtype(wavelet_delay)
 
         trace = shot_data[ri]
 
@@ -171,6 +172,7 @@ class KirchhoffMigration:
         dtype: type = np.float32,
     ):
         origin = (0.0, 0.0)
+        wavelet = None
         if dataset_dir is not None:
             vp, sources, receivers, shots, time, _, dx, dz = load_dataset_dir(dataset_dir, require_f0=False)
             spacing = (dx, dz)
@@ -181,6 +183,8 @@ class KirchhoffMigration:
                 with h5py.File(meta_path, "r") as f:
                     if "origin" in f:
                         origin = tuple(f["origin"][()])
+                    if "wavelet" in f:
+                        wavelet = np.array(f["wavelet"][()])
 
             sources = sources.copy()
             sources[..., 0] = (sources[..., 0] - origin[0]) / dx
@@ -198,33 +202,74 @@ class KirchhoffMigration:
         self.receivers = receivers
         self.shots = shots.astype(dtype) if shots is not None else None
         self.time = time.astype(dtype) if time is not None else None
+        self.dt = (self.time[1] - self.time[0]) if self.time is not None and len(self.time) > 1 else 0.001
         self.spacing = spacing
         self.origin = origin
+        self.dtype = dtype
+        if wavelet is not None and self.time is not None and len(wavelet) != len(self.time):
+            from scipy.interpolate import interp1d
+            t_orig = np.linspace(self.time[0], self.time[-1], len(wavelet))
+            wavelet = interp1d(t_orig, wavelet, kind="linear", fill_value="extrapolate")(self.time).astype(self.dtype)
+
+        self.src = wavelet
+        self.wavelet_delay = None
         self.n_jobs = n_jobs
         self.backend = backend
         self.cli = cli
         self.batch_size = batch_size
-        self.dtype = dtype
         self.traveltime_dict = {}
 
         if self.vp is not None:
             self.model = KirchhoffModel(shape=self.vp.shape, origin=self.origin)
             self._gather_unique_coords()
 
+        if self.wavelet_delay is None:
+            self._wavelet_peak_delay()
+
+        plt.figure(figsize=(10, 5))
+        plt.imshow(self.vp.T, cmap="gray", aspect="auto")
+        plt.colorbar()
+        plt.tight_layout()
+        temp_img = "/tmp/kirchhoff_model.png"
+        plt.savefig(temp_img)
+        plt.close()
         if self.cli and self.vp is not None and current_process().name == 'MainProcess':
-            plt.figure(figsize=(10, 5))
-            plt.imshow(self.vp.T, cmap="gray", aspect="auto")
-            plt.colorbar()
-            plt.tight_layout()
-            temp_img = "/tmp/kirchhoff_model.png"
-            plt.savefig(temp_img)
-            plt.close()
             subprocess.run(f"chafa {temp_img}".split())
             sleep(0.25)
             try:
                 os.remove(temp_img)
             except Exception:
                 pass
+        else:
+            plt.show(block=True)
+
+    def _wavelet_peak_delay(self):
+        """Calculates the time delay between the start of the wavelet and its peak"""
+        if self.src is None:
+            self.wavelet_delay = 0.0
+            return
+
+        peak_idx = int(np.argmax(self.src))
+        self.wavelet_delay = float(self.time[peak_idx]) if self.time is not None else float(peak_idx * self.dt)
+        logger.info(f"Wavelet peak at index {peak_idx}/{len(self.src)}, with dt: {self.dt}, at time: {self.wavelet_delay}")
+        plt.figure(figsize=(10, 5))
+        t_plot = self.time if self.time is not None else np.arange(len(self.src)) * self.dt
+        plt.plot(t_plot, self.src)
+        plt.vlines(self.wavelet_delay, np.min(self.src), np.max(self.src))
+        plt.tight_layout()
+        temp_img = "/tmp/wavelet.png"
+        plt.savefig(temp_img)
+        
+        if self.cli and self.vp is not None and current_process().name == 'MainProcess':
+            subprocess.run(f"chafa {temp_img}".split())
+            sleep(0.25)
+            try:
+                os.remove(temp_img)
+            except Exception:
+                pass
+        else:
+            plt.show(block=True)
+
 
     def _gather_unique_coords(self):
         """Analyzes acquisition geometry and schedules coordinate lifecycle per shot."""
@@ -347,12 +392,14 @@ class KirchhoffMigration:
                             pbar_eikonal.close()
 
                     # Process batch of shots
+                    delay = self.wavelet_delay if self.wavelet_delay is not None else 0.0
                     if len(batch_shots) == 1:
                         si = batch_shots[0]
                         shot_img = _process_single_shot(
                             si, self.sources[si], self.receivers, self.shots[si],
                             self.vp.shape, self.origin, self.spacing, self.time,
-                            self.traveltime_dict, X, Z, dtype=self.dtype
+                            self.traveltime_dict, X, Z, dtype=self.dtype,
+                            wavelet_delay=delay,
                         )
                         self.output += shot_img
                     else:
@@ -370,7 +417,8 @@ class KirchhoffMigration:
                                     _process_single_shot,
                                     si, self.sources[si], self.receivers, self.shots[si],
                                     self.vp.shape, self.origin, self.spacing, self.time,
-                                    self.traveltime_dict, X, Z, self.dtype
+                                    self.traveltime_dict, X, Z, self.dtype,
+                                    delay,
                                 )
                                 for si in batch_shots
                             ]
