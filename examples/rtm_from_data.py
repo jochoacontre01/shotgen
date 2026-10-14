@@ -28,7 +28,7 @@ def main(cli=False, file=None):
     setup_file_logging(dataset_dir=shotpath, script_name="rtm_from_data", logger=logger)
     logger.info("Loading shot record from: %s", shotpath)
     
-    nbl = 200
+    nbl = 512
 
     # 3. Initialize native ReverseTimeMigration directly using the SEGY dataset directory
     rtm = ReverseTimeMigration(
