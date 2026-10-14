@@ -16,11 +16,13 @@ from shotgen.sampleshot import (
     load_sigsbee,
     _find_assets_dir
 )
+from shotgen.io import SegyIO
+from shotgen.models import resample_velocity_model
 from shotgen.utils import generate_simulation_dir_name
 
 
 def _load_velocity_model_core(cfg: dict):
-    vel_spec = cfg.get("velocity_model") or cfg.get("vel_file")
+    vel_spec = cfg.get("velocity_model") or cfg.get("vel_file") or cfg.get("vel_model") or cfg.get("model")
 
     target_dx = cfg.get("dx")
     target_dz = cfg.get("dz")
@@ -34,8 +36,9 @@ def _load_velocity_model_core(cfg: dict):
     default_nx = int(cfg.get("nx", 100))
     default_nz = int(cfg.get("nz", 100))
 
-    if isinstance(vel_spec, str):
-        name_lower = vel_spec.lower().strip()
+    if isinstance(vel_spec, (str, Path)):
+        spec_str = str(vel_spec).strip()
+        name_lower = spec_str.lower()
         benchmark_map = {
             "marmousi": load_marmousi,
             "bpsalt": load_bpsalt,
@@ -43,7 +46,10 @@ def _load_velocity_model_core(cfg: dict):
             "sigsbee": load_sigsbee,
         }
 
-        if name_lower in benchmark_map:
+        candidate = Path(spec_str)
+        filepath = candidate if candidate.is_file() else None
+
+        if filepath is None and name_lower in benchmark_map:
             res = benchmark_map[name_lower]()
             if isinstance(res, tuple) and len(res) >= 2:
                 vel = res[0]
@@ -66,15 +72,27 @@ def _load_velocity_model_core(cfg: dict):
             nz = int(cfg.get("nz", meta.get("nz", nz_val)))
             return vel, nx, nz, dx_orig, dz_orig
 
-        filepath = Path(vel_spec)
-        if not filepath.exists():
-            assets_file = _find_assets_dir() / vel_spec
-            if assets_file.exists():
-                filepath = assets_file
+        if filepath is None:
+            assets_dir = _find_assets_dir()
+            if (assets_dir / spec_str).is_file():
+                filepath = assets_dir / spec_str
+            else:
+                for ext in [".segy", ".sgy", ".npy", ".bin"]:
+                    if candidate.with_suffix(ext).is_file():
+                        filepath = candidate.with_suffix(ext)
+                        break
+                    if (assets_dir / f"{spec_str}{ext}").is_file():
+                        filepath = assets_dir / f"{spec_str}{ext}"
+                        break
+                if filepath is None and assets_dir.is_dir():
+                    for f in assets_dir.iterdir():
+                        if f.is_file() and f.stem.lower() == name_lower:
+                            filepath = f
+                            break
 
-        if filepath.exists():
+        if filepath is not None and filepath.is_file():
             if filepath.suffix.lower() in [".segy", ".sgy"]:
-                vel, dx_m, dz_m = SegyIO.read_model(str(filepath))
+                vel, dx_m, dz_m = SegyIO.read_model(str(filepath), verbose=False)
                 if target_dx is not None or target_dz is not None:
                     vel, nx_new, nz_new, dx_out, dz_out = resample_velocity_model(
                         vel, dx_m, dz_m, target_dx=target_dx, target_dz=target_dz
@@ -93,6 +111,8 @@ def _load_velocity_model_core(cfg: dict):
                     return vel, nx_new, nz_new, dx_out, dz_out
                 nx_val, nz_val = vel.shape
                 return vel, nx_val, nz_val, dx_orig, dz_orig
+
+        raise FileNotFoundError(f"Velocity model file or benchmark '{vel_spec}' not found.")
 
     v_base = float(cfg.get("v_base", 2500.0))
     vel = v_base * np.ones((default_nx, default_nz), dtype=np.float32)
@@ -163,7 +183,11 @@ def main():
         cfg["shot_offset"] = args.shot_offset
 
     cli_enabled = args.cli or cfg.get("cli", False)
+    verbose_enabled = getattr(args, "verbose", False) or cfg.get("verbose", False)
+    _run_simulation_core(cfg, cli_enabled=cli_enabled, verbose=verbose_enabled)
 
+
+def _run_simulation_core(cfg: dict, cli_enabled: bool = False, verbose: bool = False):
     def _parse_val(val, default, val_type=float):
         if val is None or (isinstance(val, str) and val.strip().lower() in ("none", "null")):
             return default
@@ -188,6 +212,9 @@ def main():
     origin = tuple(cfg.get("origin", [0.0, 0.0]))
     src_origin = tuple(cfg.get("src_origin", [0.0, 0.0]))
     rec_origin = tuple(cfg.get("rec_origin", [0.0, 0.0]))
+
+    float_type_str = str(cfg.get("float_type", "float32")).lower()
+    float_type = np.float64 if "64" in float_type_str else np.float32
 
     # Crop model if max_size is specified
     max_size = cfg.get("max_size")
@@ -227,6 +254,7 @@ def main():
         float_type=float_type,
         device=device,
         fs_ms=fs_ms,
+        verbose=verbose,
     )
     shot.set_model(vel)
     if cli_enabled:
@@ -262,6 +290,7 @@ def main():
 
     if cli_enabled:
         shot.show_shot(cli=True, source_idx=0)
+    return shot, output_dir
 
 
 if __name__ == "__main__":

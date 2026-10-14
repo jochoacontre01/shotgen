@@ -47,8 +47,9 @@ def _load_velocity_model(cfg: dict):
     default_nx = int(cfg.get("nx", 100))
     default_nz = int(cfg.get("nz", 100))
 
-    if isinstance(vel_spec, str):
-        name_lower = vel_spec.lower().strip()
+    if isinstance(vel_spec, (str, Path)):
+        spec_str = str(vel_spec).strip()
+        name_lower = spec_str.lower()
         benchmark_map = {
             "marmousi": load_marmousi,
             "bpsalt": load_bpsalt,
@@ -56,7 +57,10 @@ def _load_velocity_model(cfg: dict):
             "sigsbee": load_sigsbee,
         }
 
-        if name_lower in benchmark_map:
+        candidate = Path(spec_str)
+        filepath = candidate if candidate.is_file() else None
+
+        if filepath is None and name_lower in benchmark_map:
             res = benchmark_map[name_lower]()
             if isinstance(res, tuple) and len(res) >= 2:
                 vel = res[0]
@@ -77,37 +81,49 @@ def _load_velocity_model(cfg: dict):
             nx_val, nz_val = vel.shape
             return vel, nx_val, nz_val, dx_orig, dz_orig
 
-        # Check if vel_spec is a file path
-        filepath = Path(vel_spec)
-        if not filepath.exists():
-            assets_file = _find_assets_dir() / vel_spec
-            if assets_file.exists():
-                filepath = assets_file
+        if filepath is None:
+            assets_dir = _find_assets_dir()
+            if (assets_dir / spec_str).is_file():
+                filepath = assets_dir / spec_str
             else:
-                raise FileNotFoundError(f"Velocity model file or benchmark '{vel_spec}' not found.")
+                for ext in [".segy", ".sgy", ".npy", ".bin"]:
+                    if candidate.with_suffix(ext).is_file():
+                        filepath = candidate.with_suffix(ext)
+                        break
+                    if (assets_dir / f"{spec_str}{ext}").is_file():
+                        filepath = assets_dir / f"{spec_str}{ext}"
+                        break
+                if filepath is None and assets_dir.is_dir():
+                    for f in assets_dir.iterdir():
+                        if f.is_file() and f.stem.lower() == name_lower:
+                            filepath = f
+                            break
 
-        if filepath.suffix.lower() in [".segy", ".sgy"]:
-            vel, dx_m, dz_m = SegyIO.read_model(str(filepath))
-            if target_dx is not None or target_dz is not None:
-                vel, nx_new, nz_new, dx_out, dz_out = resample_velocity_model(
-                    vel, dx_m, dz_m, target_dx=target_dx, target_dz=target_dz
-                )
-                return vel, nx_new, nz_new, dx_out, dz_out
+        if filepath is not None and filepath.is_file():
+            if filepath.suffix.lower() in [".segy", ".sgy"]:
+                vel, dx_m, dz_m = SegyIO.read_model(str(filepath), verbose=False)
+                if target_dx is not None or target_dz is not None:
+                    vel, nx_new, nz_new, dx_out, dz_out = resample_velocity_model(
+                        vel, dx_m, dz_m, target_dx=target_dx, target_dz=target_dz
+                    )
+                    return vel, nx_new, nz_new, dx_out, dz_out
 
-            nx_val, nz_val = vel.shape
-            return vel, nx_val, nz_val, dx_m, dz_m
-        elif filepath.suffix.lower() == ".npy":
-            vel = np.load(str(filepath))
-            dx_orig = float(cfg.get("dx_orig", default_dx))
-            dz_orig = float(cfg.get("dz_orig", default_dz))
-            if target_dx is not None or target_dz is not None:
-                vel, nx_new, nz_new, dx_out, dz_out = resample_velocity_model(
-                    vel, dx_orig, dz_orig, target_dx=target_dx, target_dz=target_dz
-                )
-                return vel, nx_new, nz_new, dx_out, dz_out
+                nx_val, nz_val = vel.shape
+                return vel, nx_val, nz_val, dx_m, dz_m
+            elif filepath.suffix.lower() == ".npy":
+                vel = np.load(str(filepath))
+                dx_orig = float(cfg.get("dx_orig", default_dx))
+                dz_orig = float(cfg.get("dz_orig", default_dz))
+                if target_dx is not None or target_dz is not None:
+                    vel, nx_new, nz_new, dx_out, dz_out = resample_velocity_model(
+                        vel, dx_orig, dz_orig, target_dx=target_dx, target_dz=target_dz
+                    )
+                    return vel, nx_new, nz_new, dx_out, dz_out
 
-            nx_val, nz_val = vel.shape
-            return vel, nx_val, nz_val, dx_orig, dz_orig
+                nx_val, nz_val = vel.shape
+                return vel, nx_val, nz_val, dx_orig, dz_orig
+
+        raise FileNotFoundError(f"Velocity model file or benchmark '{vel_spec}' not found.")
 
     # Fallback synthetic model
     v_base = float(cfg.get("v_base", 2500.0))

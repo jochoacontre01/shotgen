@@ -43,7 +43,10 @@ def parse_velocity_model(cfg: dict):
             "sigsbee": load_sigsbee,
         }
 
-        if name_lower in benchmark_map:
+        candidate = Path(vel_spec)
+        filepath = candidate if candidate.is_file() else None
+
+        if filepath is None and name_lower in benchmark_map:
             res = benchmark_map[name_lower]()
             if isinstance(res, tuple) and len(res) >= 2:
                 vel = res[0]
@@ -57,26 +60,39 @@ def parse_velocity_model(cfg: dict):
             dz = float(cfg.get("dz", meta.get("dz", default_dz)))
             return vel, nx_val, nz_val, dx, dz
 
-        filepath = Path(vel_spec)
-        if not filepath.exists():
-            assets_file = _find_assets_dir() / vel_spec
-            if assets_file.exists():
-                filepath = assets_file
+        if filepath is None:
+            assets_dir = _find_assets_dir()
+            if (assets_dir / vel_spec).is_file():
+                filepath = assets_dir / vel_spec
             else:
-                raise FileNotFoundError(f"Velocity model file or benchmark '{vel_spec}' not found.")
+                for ext in [".segy", ".sgy", ".npy", ".bin"]:
+                    if candidate.with_suffix(ext).is_file():
+                        filepath = candidate.with_suffix(ext)
+                        break
+                    if (assets_dir / f"{vel_spec}{ext}").is_file():
+                        filepath = assets_dir / f"{vel_spec}{ext}"
+                        break
+                if filepath is None and assets_dir.is_dir():
+                    for f in assets_dir.iterdir():
+                        if f.is_file() and f.stem.lower() == name_lower:
+                            filepath = f
+                            break
 
-        if filepath.suffix.lower() in [".segy", ".sgy"]:
-            vel, dx_m, dz_m = SegyIO.read_model(str(filepath))
-            nx_val, nz_val = vel.shape
-            dx = float(cfg.get("dx", dx_m))
-            dz = float(cfg.get("dz", dz_m))
-            nx = int(cfg.get("nx", nx_val))
-            nz = int(cfg.get("nz", nz_val))
-            return vel, nx, nz, dx, dz
-        elif filepath.suffix.lower() == ".npy":
-            vel = np.load(str(filepath))
-            nx_val, nz_val = vel.shape
-            return vel, nx_val, nz_val, default_dx, default_dz
+        if filepath is not None and filepath.is_file():
+            if filepath.suffix.lower() in [".segy", ".sgy"]:
+                vel, dx_m, dz_m = SegyIO.read_model(str(filepath), verbose=False)
+                nx_val, nz_val = vel.shape
+                dx = float(cfg.get("dx", dx_m))
+                dz = float(cfg.get("dz", dz_m))
+                nx = int(cfg.get("nx", nx_val))
+                nz = int(cfg.get("nz", nz_val))
+                return vel, nx, nz, dx, dz
+            elif filepath.suffix.lower() == ".npy":
+                vel = np.load(str(filepath))
+                nx_val, nz_val = vel.shape
+                return vel, nx_val, nz_val, default_dx, default_dz
+
+        raise FileNotFoundError(f"Velocity model file or benchmark '{vel_spec}' not found.")
 
     # Fallback synthetic model
     v_base = float(cfg.get("v_base", 2500.0))
