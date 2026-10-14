@@ -105,15 +105,15 @@ def main():
     plt.gca().set_aspect("auto")
     plt.tight_layout()
     if args.cli:
-        temp_img = "/tmp/kirchhoff_preview.png"
+        temp_img = "img.png"
         plt.savefig(temp_img)
         plt.close()
         subprocess.run(f"chafa -w 9 {temp_img}".split())
         time.sleep(0.5)
-        try:
-            os.remove(temp_img)
-        except Exception:
-            pass
+        # try:
+        #    os.remove(temp_img)
+        # except Exception:
+        #    pass
     else:    
         plt.show()
 

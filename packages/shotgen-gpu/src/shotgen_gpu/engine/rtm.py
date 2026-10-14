@@ -270,7 +270,7 @@ class ReverseTimeMigration:
             w = damp_normalized[non_zero_damp]
             self.model0.vp.data[non_zero_damp] = (1.0 - w) * self.model0.vp.data[non_zero_damp] + w * rand_damp[non_zero_damp]
             self.model.vp.data[non_zero_damp] = self.model0.vp.data[non_zero_damp]
-
+        
             print("Shots shape: ", self.shots.shape)
             print("nt: ", self.geometry.nt)
             print("dt: ", self.geometry.dt)

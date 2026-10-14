@@ -52,7 +52,7 @@ def main(cli=False, file=None):
     plotted_image = lap_image[nbl:-nbl, nbl:-nbl]
     output_npy = shotpath / 'rtm_migrated.npy'
     try:
-        np.save(output_npy, migrated_image)
+        np.save(output_npy, plotted_image)
         logger.info("Saved migrated image to: %s", output_npy)
     except OSError:
         fallback_npy = Path("/tmp") / f"{shotpath.name}_rtm_migrated.npy"
@@ -78,7 +78,7 @@ def main(cli=False, file=None):
     # vmax = max(vmax, 1e-10)
     vmin = np.min(plotted_image)
     vmax = np.max(plotted_image)
-    norm = TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax)
+    norm = TwoSlopeNorm(vcenter=0.0, vmin=0.1*vmin, vmax=0.1*vmax)
     logger.info("Plotting results...")
     logger.info(
         "Image stats - Shape: %s, Max: %s, Min: %s, Mean: %s, Std: %s",
@@ -91,7 +91,7 @@ def main(cli=False, file=None):
     plt.figure(figsize=(10, 5))
     im = plt.imshow(
         plotted_image.T,
-        cmap=cmocean.cm.balance,
+        cmap=cmocean.cm.balance_r,
         extent=extent,
         aspect="auto",
         norm=norm
@@ -100,6 +100,7 @@ def main(cli=False, file=None):
     plt.xlabel("Distance (m)")
     plt.ylabel("Depth (m)")
     plt.title("RTM Migration Image")
+    plt.gca().set_aspect("auto")
     plt.tight_layout()
     
     # plt.savefig(output_plot_path, bbox_inches="tight")

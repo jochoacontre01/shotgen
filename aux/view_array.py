@@ -23,10 +23,11 @@ plt.figure(figsize=(10,5))
 plt.imshow(data.T, aspect="auto", cmap="gray")
 plt.tight_layout()
 plt.colorbar()
+plt.savefig("img.png")
 if args.cli:
-    plt.savefig("img.png")
     subprocess.run("chafa -w 9 img.png".split())
-    if not args.savefig:
-        subprocess.run("rm img.png".split())
 else:
     plt.show()
+
+if not args.savefig:
+    subprocess.run("rm img.png".split())
