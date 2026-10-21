@@ -12,11 +12,13 @@ from scipy.ndimage import laplace
 
 from shotgen.migration import KirchhoffMigration
 from shotgen.pylogger import get_logger, setup_file_logging
+from shotgen.utils import setup_matplotlib_style
 
 logger = get_logger("kirchhoff_migration")
 
 
 def main():
+    setup_matplotlib_style()
     parser = argparse.ArgumentParser(description="Kirchhoff Pre-Stack Depth Migration (PSDM)")
     parser.add_argument("file", type=str, help="Dataset file/folder to process")
     parser.add_argument("-c", "--cli", action="store_true", help="setup runtime for non-gui interface")
@@ -67,7 +69,7 @@ def main():
     migrator = KirchhoffMigration(
         dataset_dir=str(shotpath),
         spacing=(dx_spacing, dz_spacing),
-        smooth_sigma=15.0,
+        smooth_sigma=35.0,
         cli=args.cli,
         n_jobs=args.jobs,
         batch_size=args.batch_size,
@@ -76,7 +78,7 @@ def main():
     image = migrator.run()
     output_npy = shotpath / "kirchhoff_migrated.npy"
     try:
-        np.save(output_npy, image)
+        np.save(output_npy, laplace(image))
         logger.info("Saved migrated image to: %s", output_npy)
     except OSError:
         fallback_npy = Path("/tmp") / f"{name}_kirchhoff_migrated.npy"
@@ -87,7 +89,7 @@ def main():
         )
 
     model = migrator.model
-    plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(10, 5), dpi=150)
     extent = [
         model.origin[0], 
         model.origin[0] + model.shape[0] * dx_spacing,
@@ -106,8 +108,8 @@ def main():
     plt.tight_layout()
     if args.cli:
         temp_img = "img.png"
-        plt.savefig(temp_img)
-        plt.close()
+        plt.savefig(temp_img, dpi=150)
+        plt.close(fig)
         subprocess.run(f"chafa -w 9 {temp_img}".split())
         time.sleep(0.5)
         # try:

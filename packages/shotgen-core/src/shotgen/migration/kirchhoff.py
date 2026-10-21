@@ -13,6 +13,7 @@ from shotgen.pylogger import get_logger, log_execution_time
 from scipy.ndimage import gaussian_filter
 import subprocess
 import matplotlib.pyplot as plt
+from shotgen.utils import setup_matplotlib_style
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="multiprocessing")
 
@@ -170,6 +171,7 @@ class KirchhoffMigration:
         cli: bool = False,
         batch_size: int = None,
         dtype: type = np.float32,
+        preview: bool = False,
     ):
         origin = (0.0, 0.0)
         wavelet = None
@@ -206,6 +208,7 @@ class KirchhoffMigration:
         self.spacing = spacing
         self.origin = origin
         self.dtype = dtype
+        self.preview = preview
         if wavelet is not None and self.time is not None and len(wavelet) != len(self.time):
             from scipy.interpolate import interp1d
             t_orig = np.linspace(self.time[0], self.time[-1], len(wavelet))
@@ -226,22 +229,24 @@ class KirchhoffMigration:
         if self.wavelet_delay is None:
             self._wavelet_peak_delay()
 
-        plt.figure(figsize=(10, 5))
-        plt.imshow(self.vp.T, cmap="gray", aspect="auto")
-        plt.colorbar()
-        plt.tight_layout()
-        temp_img = "/tmp/kirchhoff_model.png"
-        plt.savefig(temp_img)
-        plt.close()
-        if self.cli and self.vp is not None and current_process().name == 'MainProcess':
-            subprocess.run(f"chafa {temp_img}".split())
-            sleep(0.25)
-            try:
-                os.remove(temp_img)
-            except Exception:
-                pass
-        else:
-            plt.show(block=True)
+        if self.preview and self.vp is not None:
+            setup_matplotlib_style()
+            fig = plt.figure(figsize=(10, 5), dpi=150)
+            plt.imshow(self.vp.T, cmap="gray", aspect="auto")
+            plt.colorbar()
+            plt.tight_layout()
+            temp_img = "/tmp/kirchhoff_model.png"
+            plt.savefig(temp_img, dpi=150)
+            plt.close(fig)
+            if self.cli and current_process().name == 'MainProcess':
+                subprocess.run(f"chafa {temp_img}".split())
+                sleep(0.25)
+                try:
+                    os.remove(temp_img)
+                except Exception:
+                    pass
+            else:
+                plt.show(block=True)
 
     def _wavelet_peak_delay(self):
         """Calculates the time delay between the start of the wavelet and its peak"""
@@ -252,24 +257,6 @@ class KirchhoffMigration:
         peak_idx = int(np.argmax(self.src))
         self.wavelet_delay = float(self.time[peak_idx]) if self.time is not None else float(peak_idx * self.dt)
         logger.info(f"Wavelet peak at index {peak_idx}/{len(self.src)}, with dt: {self.dt}, at time: {self.wavelet_delay}")
-        plt.figure(figsize=(10, 5))
-        t_plot = self.time if self.time is not None else np.arange(len(self.src)) * self.dt
-        plt.plot(t_plot, self.src)
-        plt.vlines(self.wavelet_delay, np.min(self.src), np.max(self.src))
-        plt.tight_layout()
-        temp_img = "/tmp/wavelet.png"
-        plt.savefig(temp_img)
-        
-        if self.cli and self.vp is not None and current_process().name == 'MainProcess':
-            subprocess.run(f"chafa {temp_img}".split())
-            sleep(0.25)
-            try:
-                os.remove(temp_img)
-            except Exception:
-                pass
-        else:
-            plt.show(block=True)
-
 
     def _gather_unique_coords(self):
         """Analyzes acquisition geometry and schedules coordinate lifecycle per shot."""
