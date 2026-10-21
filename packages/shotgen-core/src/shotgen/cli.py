@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 
 
 import json
@@ -18,7 +19,7 @@ from shotgen.sampleshot import (
 )
 from shotgen.io import SegyIO
 from shotgen.models import resample_velocity_model
-from shotgen.utils import generate_simulation_dir_name
+from shotgen.utils import generate_simulation_dir_name, resolve_simulation_output_dir
 
 
 def _load_velocity_model_core(cfg: dict):
@@ -142,11 +143,13 @@ def main():
     args = parser.parse_args()
 
     cfg = {}
+    config_file = None
     if args.config:
         config_path = Path(args.config)
         if not config_path.exists():
             print(f"Error: Configuration file not found at {config_path}", file=sys.stderr)
             sys.exit(1)
+        config_file = str(config_path.resolve())
         with open(config_path, "r") as f:
             if config_path.suffix.lower() in [".yaml", ".yml"]:
                 cfg = yaml.safe_load(f) or {}
@@ -184,10 +187,13 @@ def main():
 
     cli_enabled = args.cli or cfg.get("cli", False)
     verbose_enabled = getattr(args, "verbose", False) or cfg.get("verbose", False)
-    _run_simulation_core(cfg, cli_enabled=cli_enabled, verbose=verbose_enabled)
+    _run_simulation_core(cfg, cli_enabled=cli_enabled, verbose=verbose_enabled, config_file=config_file)
 
 
-def _run_simulation_core(cfg: dict, cli_enabled: bool = False, verbose: bool = False):
+def _run_simulation_core(cfg: dict, cli_enabled: bool = False, verbose: bool = False, config_file: str | Path | None = None):
+    if config_file is None:
+        config_file = cfg.get("config_file") or cfg.get("_config_path")
+
     def _parse_val(val, default, val_type=float):
         if val is None or (isinstance(val, str) and val.strip().lower() in ("none", "null")):
             return default
@@ -255,6 +261,7 @@ def _run_simulation_core(cfg: dict, cli_enabled: bool = False, verbose: bool = F
         device=device,
         fs_ms=fs_ms,
         verbose=verbose,
+        config_file=config_file,
     )
     shot.set_model(vel)
     if cli_enabled:
@@ -281,11 +288,8 @@ def _run_simulation_core(cfg: dict, cli_enabled: bool = False, verbose: bool = F
         "n_damping": n_damping,
         "meters_per_cell": meters_per_cell,
     })
-    if "output_dir" in cfg:
-        output_dir = Path(cfg["output_dir"])
-    else:
-        output_dir = generate_simulation_dir_name(cfg, base_dir="data")
-    shot.save_shot(str(output_dir))
+    output_dir = resolve_simulation_output_dir(cfg, default_base_dir="data")
+    shot.save_shot(str(output_dir), config_file=config_file)
     print(f"[shotgen-core CLI] Wavefield simulation complete! Saved to: {output_dir}")
 
     if cli_enabled:

@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 
 
 import json
@@ -23,7 +24,7 @@ from shotgen.sampleshot import (
     _find_assets_dir,
     ShotRecord
 )
-from shotgen.utils import generate_simulation_dir_name
+from shotgen.utils import generate_simulation_dir_name, resolve_simulation_output_dir
 
 
 def _load_velocity_model(cfg: dict):
@@ -159,9 +160,9 @@ def main():
     cli_enabled = args.cli or cfg.get("cli", False)
 
     if task_type == "simulation":
-        _run_simulation_cli(cfg, cli_enabled=cli_enabled, verbose=verbose_enabled)
+        _run_simulation_cli(cfg, cli_enabled=cli_enabled, verbose=verbose_enabled, config_file=config_path)
     elif task_type == "rtm":
-        _run_rtm_cli(cfg, verbose=verbose_enabled)
+        _run_rtm_cli(cfg, verbose=verbose_enabled, config_file=config_path)
     else:
         print(f"Error: Unknown task type '{task_type}' in config", file=sys.stderr)
         sys.exit(1)
@@ -173,8 +174,10 @@ def _parse_val(val, default, val_type=float):
     return val_type(val)
 
 
-def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = False):
+def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = False, config_file: str | Path | None = None):
     t_start = time.time()
+    if config_file is None:
+        config_file = cfg.get("config_file") or cfg.get("_config_path")
     vel, nx, nz, dx, dz = _load_velocity_model(cfg)
 
     n_sources = _parse_val(cfg.get("n_sources"), 2, int)
@@ -246,6 +249,7 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
         device=cfg.get("device", "auto"),
         fs_ms=fs_ms,
         verbose=verbose,
+        config_file=config_file,
     )
     shot_rec.set_model(vel)
 
@@ -302,10 +306,7 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
         "n_damping": n_damping,
         "meters_per_cell": meters_per_cell,
     })
-    if "output_dir" in cfg:
-        output_dir = Path(cfg["output_dir"])
-    else:
-        output_dir = generate_simulation_dir_name(cfg, base_dir="data")
+    output_dir = resolve_simulation_output_dir(cfg, default_base_dir="data")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     n_rec_actual = receivers.shape[1] if receivers.ndim == 3 else len(receivers)
@@ -337,7 +338,7 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
     shot_rec.recs = receivers
     shot_rec.src = wavelet
     shot_rec.time_vector = np.linspace(0, ms / 1000.0, shot_run.shape[-1])
-    shot_rec.save_shot(str(output_dir))
+    shot_rec.save_shot(str(output_dir), config_file=config_file)
 
     # Save output to HDF5 container for backwards compatibility
     out_h5 = output_dir / "simulation_results.h5"
@@ -369,8 +370,10 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
 
 
 
-def _run_rtm_cli(cfg: dict, verbose: bool = False):
+def _run_rtm_cli(cfg: dict, verbose: bool = False, config_file: str | Path | None = None):
     t_start = time.time()
+    if config_file is None:
+        config_file = cfg.get("config_file") or cfg.get("_config_path")
     dataset_dir = cfg.get("dataset_dir")
     nbl = cfg.get("nbl", 40)
     space_order = cfg.get("space_order", 4)
@@ -389,6 +392,12 @@ def _run_rtm_cli(cfg: dict, verbose: bool = False):
     output_dir.mkdir(parents=True, exist_ok=True)
     out_file = output_dir / "rtm_image.npy"
     np.save(out_file, image)
+    if config_file:
+        cfg_p = Path(config_file)
+        if cfg_p.is_file():
+            dest = output_dir / cfg_p.name
+            if cfg_p.resolve() != dest.resolve():
+                shutil.copy2(cfg_p, dest)
     t_elapsed = time.time() - t_start
     print(f"[shotgen-gpu CLI] RTM complete! Image written to: {out_file}")
     if verbose:

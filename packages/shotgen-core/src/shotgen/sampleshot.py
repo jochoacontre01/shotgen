@@ -18,6 +18,7 @@ from shotgen.io import SegyIO
 from shotgen.geometry import map_coordinate_to_index
 from shotgen.runner import run_gpu_simulation_dict
 from shotgen.pylogger import get_logger, log_execution_time
+from shotgen.utils import setup_matplotlib_style
 
 logger = get_logger("shotgen.sampleshot")
 
@@ -120,12 +121,14 @@ class ShotRecord:
         float_type=np.float32,
         device="auto",
         fs_ms=None,
-        verbose=False
+        verbose=False,
+        config_file=None,
     ):
         self.engine = engine
         self.float_type = float_type
         self.fs_ms = fs_ms
         self.verbose = verbose
+        self.config_file = config_file
 
         # Device detection and setup
         if engine.lower() == "pylops" and (device == "auto" or device is None):
@@ -285,7 +288,8 @@ class ShotRecord:
         kwargs.setdefault("cmap", "turbo")
         kwargs.setdefault("aspect", "auto")
 
-        plt.figure(figsize=(10, 5))
+        setup_matplotlib_style()
+        fig = plt.figure(figsize=(10, 5), dpi=150)
         extent = (self.origin[0], self.origin[0] + self.nx * self.dx, self.origin[-1] + self.nz * self.dz, self.origin[-1])
         im = plt.imshow(self.vel.T, extent=extent, **kwargs)
         if draw_recs:
@@ -303,15 +307,16 @@ class ShotRecord:
 
         if hq:
             name = _find_assets_dir().parent / "examples/velmodel.png"
-            plt.savefig(name)
+            plt.savefig(name, dpi=150)
             subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"])
         if cli:
-            plt.savefig("img.png", dpi=100)
-            plt.close()
+            plt.savefig("img.png", dpi=150)
+            plt.close(fig)
             subprocess.run(["chafa", "img.png"])
             subprocess.run(["rm", "img.png"])
         else:
             plt.show()
+            plt.close(fig)
 
     def set_source_position(self, x_pos, y_pos):
         src_pos = np.vstack([x_pos, y_pos])
@@ -492,7 +497,7 @@ class ShotRecord:
             return self.shot_run * (self.aop.geometry.time_axis.time_values**factor)
         return self.shot_run
 
-    def save_shot(self, name, overwrite=True):
+    def save_shot(self, name, overwrite=True, config_file=None):
         if os.path.exists(name) and not overwrite:
             logger.warning(f"Folder '{name}' already exists and overwrite=False. Save aborted.")
             return
@@ -521,6 +526,15 @@ class ShotRecord:
                 f.create_dataset("fs_ms", data=self.fs_ms)
             if hasattr(self, 'snr') and self.snr is not None:
                 f.create_dataset("snr", data=self.snr)
+
+        # Copy source configuration file if available
+        src_cfg = config_file if config_file is not None else getattr(self, "config_file", None)
+        if src_cfg:
+            cfg_p = pathlib.Path(src_cfg)
+            if cfg_p.is_file():
+                dest_cfg = pathlib.Path(name) / cfg_p.name
+                if cfg_p.resolve() != dest_cfg.resolve():
+                    shutil.copy2(cfg_p, dest_cfg)
 
         logger.info(f"Saved simulation dataset files to folder: {name}")
 
@@ -567,7 +581,8 @@ class ShotRecord:
             vmax = 1.0
         vmin = -vmax
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        setup_matplotlib_style()
+        fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
 
         if hasattr(self, "recs") and self.recs is not None and len(self.recs) > 0:
             rec_pos = self.recs[source_idx] if self.recs.ndim == 3 else self.recs
@@ -607,16 +622,17 @@ class ShotRecord:
 
         if hq:
             name = _find_assets_dir().parent / "examples/shots.png"
-            plt.savefig(name)
+            plt.savefig(name, dpi=150)
             subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"])
         if cli:
-            plt.savefig("img.png")
+            plt.savefig("img.png", dpi=150)
             plt.close(fig)
             subprocess.run("chafa img.png".split())
             time.sleep(0.5)
             subprocess.run("rm img.png".split())
         else:
             plt.show()
+            plt.close(fig)
 
 
 class LoadShotRecord:
@@ -687,12 +703,14 @@ class LoadShotRecord:
 
             logger.info(f"Successfully loaded dataset '{path}': {self.nshots} shots | velocity grid {self.velocity_model.shape if self.velocity_model is not None else 'N/A'}")
 
-    def plot(self, **kwargs):
+    def plot(self, show: bool = False, **kwargs):
+        setup_matplotlib_style()
         shots_stack = np.hstack([shot.T for shot in self.shots]).T
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
         fig, ax = seisplot.plot(shots_stack, fig=fig, ax=ax, linewidth=0.1, vaxis=self.time, hlabel="rec (m)", vlabel="Two-way travel time (s)", title="Shot gather", colorbar=True, **kwargs)
-        plt.show()
-        return plt.gca()
+        if show:
+            plt.show()
+        return ax
 
 
 def _inject_headers_if_needed(filepath, dx, dz):
