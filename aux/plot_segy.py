@@ -1,20 +1,23 @@
 import segyio
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
+from shotgen.utils import setup_matplotlib_style
 import numpy as np
 import argparse
 import subprocess
 import os
 import time
 
+setup_matplotlib_style()
+
 parser = argparse.ArgumentParser()
-parser.add_argument("-f", help="File path")
+parser.add_argument("file", help="File path")
 parser.add_argument("--n_traces", type=int, help="Number of traces to extract")
 parser.add_argument("--cli", action="store_true", help="Shows the image in cli")
 
 args = parser.parse_args()
 
-file = args.f if args.f is not None else None
+file = args.file if args.file is not None else None
 if file is None:
     raise ValueError(
         "The file name should not be empty"
@@ -51,12 +54,15 @@ extent = (
     0, traces.shape[0], num_samples*sample_rate_ms, 0
 )
 # norm = TwoSlopeNorm(0.0, np.amin(traces), np.amax(traces))
-plt.imshow(traces.T, cmap="seismic", aspect="auto", extent=extent)
-plt.xlabel("Traces")
-plt.ylabel("TWT (ms")
-plt.colorbar()
+fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
+im = ax.imshow(traces.T, cmap="seismic", aspect="auto", extent=extent)
+ax.set_xlabel("Traces")
+ax.set_ylabel("TWT (ms)")
+plt.colorbar(im, ax=ax)
+plt.tight_layout()
 if args.cli:
-    plt.savefig("segy_img.png")
+    plt.savefig("segy_img.png", dpi=150)
+    plt.close(fig)
     subprocess.run("chafa segy_img.png".split())
     time.sleep(0.5)
     os.remove("segy_img.png")

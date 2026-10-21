@@ -8,6 +8,7 @@ from scipy.ndimage import laplace
 from shotgen.sampleshot import LoadShotRecord
 from shotgen.migration import ReverseTimeMigration
 from shotgen.pylogger import get_logger, setup_file_logging
+from shotgen.utils import setup_matplotlib_style
 import argparse
 import subprocess
 import time
@@ -15,6 +16,7 @@ import time
 logger = get_logger("rtm_from_data")
 
 def main(cli=False, file=None):
+    setup_matplotlib_style()
     # 1. Locate and load the Sigsbee shot record file
     if file is not None:
         shotpath = Path(__file__).resolve().parents[1] / file
@@ -88,7 +90,7 @@ def main(cli=False, file=None):
         np.mean(plotted_image),
         np.std(plotted_image),
     )
-    plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(10, 5), dpi=150)
     im = plt.imshow(
         plotted_image.T,
         cmap=cmocean.cm.balance_r,
@@ -106,7 +108,8 @@ def main(cli=False, file=None):
     # plt.savefig(output_plot_path, bbox_inches="tight")
     # print(f"Plot saved to: {output_plot_path}")
     if cli:
-        plt.savefig("img.png")
+        plt.savefig("img.png", dpi=150)
+        plt.close(fig)
         subprocess.run("chafa -w 9 img.png".split())
         time.sleep(0.5)
         # subprocess.run("rm img.png".split())

@@ -11,7 +11,24 @@ from shotgen_gpu.config import configure_devito_device
 from shotgen_gpu.engine.rtm import ReverseTimeMigration
 
 
+def setup_style():
+    try:
+        import scienceplots
+        plt.style.use(["science", "no-latex"])
+    except Exception:
+        pass
+    plt.rcParams["figure.figsize"] = (10, 5)
+    plt.rcParams["figure.dpi"] = 150
+    plt.rcParams["savefig.dpi"] = 150
+    plt.rcParams["axes.grid"] = False
+    plt.rcParams["xtick.direction"] = "out"
+    plt.rcParams["ytick.direction"] = "out"
+    plt.rcParams["xtick.top"] = True
+    plt.rcParams["ytick.right"] = True
+
+
 def main():
+    setup_style()
     parser = argparse.ArgumentParser(description="rtm.py: Devito / OpenACC Reverse Time Migration example")
     parser.add_argument("--dataset_dir", "-d", type=str, default="data/example_simulation_output", help="Path to generated simulation dataset directory")
     parser.add_argument("--device", type=str, default="auto", help="Compute device ('auto', 'cpu', 'cuda')")
@@ -41,7 +58,7 @@ def main():
     print(f"[rtm.py] Reverse Time Migration complete! Image saved to: {out_file}")
 
     if not args.no_plot:
-        plt.figure(figsize=(10, 5))
+        plt.figure(figsize=(10, 5), dpi=150)
         extent = [
             rtm.origin[0],
             rtm.origin[0] + rtm.vp.shape[0] * rtm.spacing[0],
@@ -64,7 +81,7 @@ def main():
         plt.tight_layout()
 
         if args.cli:
-            plt.savefig("rtm_preview.png", dpi=100)
+            plt.savefig("rtm_preview.png", dpi=150)
             print("[rtm.py] Saved preview image to rtm_preview.png")
             plt.close()
         else:

@@ -5,7 +5,7 @@ from .models import GeoModel
 from .migration import KirchhoffMigration, KirchhoffModel, load_dataset_dir
 from .runner import run_gpu_simulation
 
-from .utils import generate_simulation_dir_name
+from .utils import generate_simulation_dir_name, setup_matplotlib_style
 from .pylogger import (
     get_logger,
     TqdmLoggingHandler,
@@ -30,6 +30,7 @@ __all__ = [
     "run_gpu_simulation",
     "map_coordinate_to_index",
     "generate_simulation_dir_name",
+    "setup_matplotlib_style",
     "get_logger",
     "TqdmLoggingHandler",
     "log_execution_time",

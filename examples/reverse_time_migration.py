@@ -2,12 +2,15 @@
 from shotgen.migration import ReverseTimeMigration, ReverseTimeMigrationGPU
 from shotgen.sampleshot import LoadShotRecord
 from shotgen.models import GeoModel
+from shotgen.utils import setup_matplotlib_style
 from pypalettes import create_cmap
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 from scipy.ndimage import laplace
+
+setup_matplotlib_style()
 
 mig_cmap = create_cmap(
     colors=[
@@ -62,9 +65,10 @@ domain_size = 1.e-3 * np.array(model.domain_size)
 extent = [model.origin[0], model.origin[0] + domain_size[0],
             model.origin[1] + domain_size[1], model.origin[1]]
 
-plt.figure(figsize=(15,8))
-plt.imshow(laplace(migrated)[nbl:-nbl,nbl:-nbl].T, cmap="gray", extent=extent, aspect="equal")
+plt.figure(figsize=(10, 5), dpi=150)
+plt.imshow(laplace(migrated)[nbl:-nbl,nbl:-nbl].T, cmap="gray", extent=extent, aspect="auto")
 plt.colorbar(label="Amplitude")
+plt.tight_layout()
 plt.show()
 
 

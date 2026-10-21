@@ -1,10 +1,13 @@
 from shotgen.sampleshot import LoadShotRecord
+from shotgen.utils import setup_matplotlib_style
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 import pathlib
 import numpy as np
 import h5py
 import os
+
+setup_matplotlib_style()
 
 def filter_2d(data, x, y):
     """
@@ -48,7 +51,7 @@ def filter_2d(data, x, y):
     FX, FY = np.meshgrid(freq_x, freq_y)
 
     # 3. Interactive Plotting
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
     ax.set_title("Draw a polygon to mask frequencies.\nSingle-click to add points. Double-click to close and apply.")
     ax.set_xlabel("Frequency X")
     ax.set_ylabel("Frequency Y")

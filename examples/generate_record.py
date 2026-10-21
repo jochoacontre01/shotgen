@@ -8,11 +8,10 @@ import warnings
 
 from shotgen.sampleshot import ShotRecord, load_overthrust, load_bpsalt, load_marmousi
 from shotgen.io import generate_video
-from shotgen.utils import generate_simulation_dir_name
+from shotgen.utils import generate_simulation_dir_name, setup_matplotlib_style
 
-import scienceplots
 import matplotlib.pyplot as plt
-plt.style.use(["science", "no-latex"])
+setup_matplotlib_style()
 
 def parse_tuple(value):
     if value is None:

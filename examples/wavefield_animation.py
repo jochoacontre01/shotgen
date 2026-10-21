@@ -39,9 +39,11 @@ from examples.seismic import Model, AcquisitionGeometry
 from examples.seismic.acoustic.operators import iso_stencil
 
 from shotgen.pylogger import get_logger, setup_file_logging
-from shotgen.utils import generate_simulation_dir_name
+from shotgen.utils import generate_simulation_dir_name, setup_matplotlib_style
 from shotgen.sampleshot import ShotRecord
 from shotgen.cli import _load_velocity_model_core
+
+setup_matplotlib_style()
 
 logger = get_logger(__name__)
 
@@ -305,7 +307,7 @@ def create_animation(
 
     logger.info(f"Preparing animation rendering: {num_frames} frames, extent={extent}, fps={fps}")
 
-    fig, ax = plt.subplots(figsize=(11, 6), dpi=100)
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
 
     # Background velocity model
     ax.imshow(

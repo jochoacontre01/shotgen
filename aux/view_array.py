@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import argparse
 import subprocess
 from pathlib import Path
+from shotgen.utils import setup_matplotlib_style
+
+setup_matplotlib_style()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("file", type=str, help="Numpy array to view")
@@ -19,12 +22,13 @@ else:
     )
 data = np.load(datapath)
 
-plt.figure(figsize=(10,5))
+fig = plt.figure(figsize=(10, 5), dpi=150)
 plt.imshow(data.T, aspect="auto", cmap="gray")
 plt.tight_layout()
 plt.colorbar()
-plt.savefig("img.png")
+plt.savefig("img.png", dpi=150)
 if args.cli:
+    plt.close(fig)
     subprocess.run("chafa -w 9 img.png".split())
 else:
     plt.show()

@@ -8,9 +8,11 @@ from scipy.ndimage import laplace
 from matplotlib.colors import TwoSlopeNorm
 
 from shotgen.migration.kirchhoff import KirchhoffMigration
+from shotgen.utils import setup_matplotlib_style
 
 
 def main():
+    setup_matplotlib_style()
     parser = argparse.ArgumentParser(description="kirchhoff.py: Kirchhoff pre-stack depth migration example")
     parser.add_argument("--dataset_dir", "-d", type=str, default="data/example_simulation_output", help="Path to generated simulation dataset directory")
     parser.add_argument("--no_plot", action="store_true", help="Skip display of plot window")
@@ -33,7 +35,7 @@ def main():
     print(f"[kirchhoff.py] Kirchhoff migration complete! Image saved to: {out_file}")
 
     if not args.no_plot:
-        plt.figure(figsize=(10, 5))
+        plt.figure(figsize=(10, 5), dpi=150)
         extent = [
             migrator.origin[0],
             migrator.origin[0] + migrator.vp.shape[0] * migrator.spacing[0],
@@ -53,7 +55,7 @@ def main():
         plt.tight_layout()
 
         if args.cli:
-            plt.savefig("kirchhoff_preview.png", dpi=100)
+            plt.savefig("kirchhoff_preview.png", dpi=150)
             print("[kirchhoff.py] Saved preview image to kirchhoff_preview.png")
             plt.close()
         else:

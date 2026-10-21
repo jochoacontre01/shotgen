@@ -2,8 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import subprocess
+from shotgen.utils import setup_matplotlib_style
 
 def main():
+    setup_matplotlib_style()
     parser = argparse.ArgumentParser(description="Read and plot velocity model data.")
     parser.add_argument("-c", action="store_true", help="Display the image in the terminal using timg")
     args = parser.parse_args()
@@ -19,7 +21,7 @@ def main():
     dz = 6.25
     extent = (0, nx * dx, nz * dz, 0)
 
-    plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(10, 5), dpi=150)
     im = plt.imshow(data.T, extent=extent, cmap="turbo", aspect="auto")
     plt.colorbar(im, label="Velocity (m/s)")
     plt.xlabel("X (m)")
@@ -28,7 +30,8 @@ def main():
     plt.tight_layout()
 
     if args.c:
-        plt.savefig("image.png")
+        plt.savefig("image.png", dpi=150)
+        plt.close(fig)
         subprocess.run(["timg", "image.png"])
         subprocess.run(["rm", "image.png"])
     else:
