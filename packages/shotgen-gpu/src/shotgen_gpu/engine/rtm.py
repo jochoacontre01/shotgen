@@ -251,7 +251,7 @@ class ReverseTimeMigration:
     def _setup_solver(self):
         self.solver = AcousticWaveSolver(self.model, self.geometry, space_order=self.space_order, time_order=self.time_order)
 
-    def run(self, save_wavefield=False, save_each=5, verbose=True, cli=False):
+    def run(self, save_wavefield=False, save_each=5, verbose=True, cli=False, preview=False, source_indices=None, return_individual=False):
         #if verbose:
         #    logger.setLevel(logging.INFO)
         if self.from_data:
@@ -276,31 +276,50 @@ class ReverseTimeMigration:
             print("dt: ", self.geometry.dt)
             print(type(self.geometry.src)) # RickerSource
 
-            plt.figure(figsize=(10, 5))
-            plt.imshow(self.model0.vp.data.T, aspect="auto", cmap="grey_r")
-            # plt.plot(self.model0.vp.data.T[1000,:100])
-            # plt.plot(damp_random[:,200])
-            plt.title("Damping Layer (self.model.damp)")
-            plt.colorbar(label="Damping value")
-            plt.tight_layout()
-            if cli:
-                plt.savefig("damp_preview.png")
-                subprocess.run("chafa damp_preview.png".split())
-                time.sleep(0.5)
-                if os.path.exists("damp_preview.png"):
-                    os.remove("damp_preview.png")
-            
-                
-            else:
-                plt.show(block=True)
+            if preview:
+                try:
+                    import scienceplots
+                    plt.style.use(["science", "no-latex"])
+                except Exception:
+                    pass
+                plt.rcParams["figure.figsize"] = (10, 5)
+                plt.rcParams["figure.dpi"] = 150
+                plt.rcParams["savefig.dpi"] = 150
+                plt.rcParams["axes.grid"] = False
+                plt.rcParams["xtick.direction"] = "out"
+                plt.rcParams["ytick.direction"] = "out"
+                plt.rcParams["xtick.top"] = True
+                plt.rcParams["ytick.right"] = True
+
+                fig = plt.figure(figsize=(10, 5), dpi=150)
+                plt.imshow(self.model0.vp.data.T, aspect="auto", cmap="grey_r")
+                plt.title("Damping Layer (self.model.damp)")
+                plt.colorbar(label="Damping value")
+                plt.tight_layout()
+                if cli:
+                    plt.savefig("damp_preview.png", dpi=150)
+                    subprocess.run("chafa damp_preview.png".split())
+                    time.sleep(0.5)
+                    if os.path.exists("damp_preview.png"):
+                        os.remove("damp_preview.png")
+                else:
+                    plt.show(block=True)
+                plt.close(fig)
             # sys.exit()
             us, vs = [], []
+            individual_images = {} if return_individual else None
+
+            if source_indices is None:
+                source_iter = list(range(self.n_sources))
+            else:
+                source_iter = [idx for idx in source_indices if 0 <= idx < self.n_sources]
+
             image = Function(name="image", grid=self.model.grid)
             operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
 
-            each = 1
-            print(self.n_sources//each)
-            for i in tqdm(range(self.n_sources//each), desc="Source", total=self.n_sources//each):
+            prev_image_data = np.zeros_like(image.data) if return_individual else None
+
+            for i in tqdm(source_iter, desc="Source", total=len(source_iter)):
                 self.geometry.src_positions[0, :] = self.sources[i, :]
                 self.source.coordinates.data[0, :] = self.sources[i, :]
 
@@ -317,6 +336,11 @@ class ReverseTimeMigration:
 
                 operator(u=u0, v=v, vp=self.model0.vp, dt=self.geometry.dt, residual=self.shots[i])
 
+                if return_individual:
+                    curr_data = image.data.copy()
+                    individual_images[i] = curr_data - prev_image_data
+                    prev_image_data = curr_data
+
                 if save_wavefield:
                     us.append(u0.data.copy()[::save_each])
                     vs.append(v.data.copy()[::save_each])
@@ -324,6 +348,8 @@ class ReverseTimeMigration:
             self.us = np.array(us)
             self.vs = np.array(vs)
             self.image = image.data
+            if return_individual:
+                return self.image, individual_images
             return self.image
         else:
             shots, us, vs = [], [], []
