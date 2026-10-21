@@ -6,3 +6,7 @@ assets*/
 *.swp
 *.zip
 clipboard.txt
+graphify-out/
+gempy_inputs/
+create_flemish_pass.py
+img.png
