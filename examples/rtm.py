@@ -9,6 +9,9 @@ from matplotlib.colors import TwoSlopeNorm
 
 from shotgen_gpu.config import configure_devito_device
 from shotgen_gpu.engine.rtm import ReverseTimeMigration
+from shotgen.pylogger import get_logger, setup_file_logging
+
+logger = get_logger("rtm")
 
 
 def setup_style():
@@ -44,8 +47,13 @@ def main():
         print(f"Error: Dataset directory '{dataset_path}' not found. Please run shotrecord.py first.", file=sys.stderr)
         sys.exit(1)
 
+    log_path = setup_file_logging(dataset_dir=dataset_path, script_name="rtm", logger=logger)
+    timestamp = log_path.name[:15]
+
     configured_device = configure_devito_device(args.device)
-    print(f"[rtm.py] Running RTM on device: {configured_device.upper()} | Dataset: {dataset_path}")
+    logger.info("Running RTM on device: %s | Dataset: %s", configured_device.upper(), dataset_path)
+    if args.t_start is not None or args.t_end is not None:
+        logger.info("Migration time window: t_start=%s ms, t_end=%s ms, t_taper=%s ms", args.t_start, args.t_end, args.t_taper)
 
     rtm = ReverseTimeMigration(
         dataset_dir=str(dataset_path),
@@ -59,9 +67,9 @@ def main():
 
     image = rtm.run(save_wavefield=False)
 
-    out_file = dataset_path / "rtm_migrated.npy"
+    out_file = dataset_path / f"{timestamp}_rtm_migrated.npy"
     np.save(out_file, image)
-    print(f"[rtm.py] Reverse Time Migration complete! Image saved to: {out_file}")
+    logger.info("Reverse Time Migration complete! Image saved to: %s", out_file)
 
     if not args.no_plot:
         plt.figure(figsize=(10, 5), dpi=150)

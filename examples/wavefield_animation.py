@@ -558,6 +558,7 @@ def main():
 
     # Setup centralized run logging
     log_file = setup_file_logging(dataset_dir, "wavefield_animation", logger=logger)
+    timestamp = log_file.name[:15]
     logger.info(f"Run execution log initialized at: {log_file}")
     logger.info(f"Target simulation dataset directory: {dataset_dir}")
 

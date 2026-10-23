@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import sys
 import time
 from contextlib import contextmanager
@@ -104,37 +105,87 @@ def add_file_handler(
     return handler
 
 
+def get_code_version() -> str:
+    """
+    Returns the current git commit hash, branch, and dirty status if available,
+    or falls back to package version / unknown.
+    """
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        dirty = "-dirty" if status else ""
+        return f"{commit} ({branch}{dirty})"
+    except Exception:
+        try:
+            import shotgen
+            return getattr(shotgen, "__version__", "unknown")
+        except Exception:
+            return "unknown"
+
+
 def setup_file_logging(
     dataset_dir: str | Path,
     script_name: str,
     logger: logging.Logger | None = None,
+    timestamp: str | None = None,
 ) -> Path:
     """
     Configures file logging for a migration script, saving logs to:
-    `<dataset_dir>/<script_name>_%Y%m%d_%H%M%S.log`
+    `<dataset_dir>/%Y%m%d_%H%M%S_<script_name>.log`
 
     If dataset_dir is read-only or not writable, falls back to:
-    `/tmp/<dataset_name>_<script_name>_%Y%m%d_%H%M%S.log`
+    `/tmp/<dataset_name>_%Y%m%d_%H%M%S_<script_name>.log`
     with a warning.
+
+    Writes the code version at the very top of the log file.
 
     Returns the Path of the configured log file.
     """
     clean_script = Path(script_name).stem
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{clean_script}_{timestamp}.log"
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{timestamp}_{clean_script}.log"
 
     dataset_path = Path(dataset_dir)
     target_path = dataset_path / filename
+
+    code_version = get_code_version()
+
+    def _write_header(p: Path):
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            is_new = not p.exists() or p.stat().st_size == 0
+            with open(p, "a", encoding="utf-8") as f:
+                if is_new:
+                    f.write(f"# Code Version: {code_version}\n")
+                    f.write(f"# Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"# Script: {clean_script}\n\n")
+        except Exception:
+            pass
 
     # Test write permissions; fallback to /tmp if read-only or unwritable
     try:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         with open(target_path, "a", encoding="utf-8"):
             pass
+        _write_header(target_path)
     except (OSError, PermissionError) as e:
         fallback_dir = Path("/tmp")
         dataset_name = dataset_path.name or "dataset"
-        target_path = fallback_dir / f"{dataset_name}_{clean_script}_{timestamp}.log"
+        target_path = fallback_dir / f"{dataset_name}_{timestamp}_{clean_script}.log"
         fallback_msg = (
             f"Dataset directory '{dataset_dir}' is read-only or not writable ({e}); "
             f"falling back to log file at '{target_path}'."
@@ -143,11 +194,12 @@ def setup_file_logging(
             logger.warning(fallback_msg)
         else:
             sys.stderr.write(f"[WARNING] {fallback_msg}\n")
+        _write_header(target_path)
 
     add_file_handler(target_path, logger=logger)
 
     effective_logger = logger if logger is not None else get_logger(clean_script)
-    effective_logger.info("Session log initialized: %s", target_path)
+    effective_logger.info("Session log initialized: %s | Code version: %s", target_path, code_version)
     return target_path
 
 

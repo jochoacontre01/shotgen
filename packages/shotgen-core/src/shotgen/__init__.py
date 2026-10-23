@@ -12,6 +12,7 @@ from .pylogger import (
     log_execution_time,
     add_file_handler,
     setup_file_logging,
+    get_code_version,
 )
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "log_execution_time",
     "add_file_handler",
     "setup_file_logging",
+    "get_code_version",
 ]
 
 

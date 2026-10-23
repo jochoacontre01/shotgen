@@ -91,7 +91,8 @@ def main(file, cli=False, num_sources=None, sources=None, nbl=512):
         else:
             raise FileNotFoundError(f"Could not locate dataset path: {file}")
 
-    setup_file_logging(dataset_dir=shotpath, script_name="rtm_debug_sources", logger=logger)
+    log_path = setup_file_logging(dataset_dir=shotpath, script_name="rtm_debug_sources", logger=logger)
+    timestamp = log_path.name[:15]
     logger.info("Loading shot record from: %s", shotpath)
 
     # Output directory for individual source contributions
@@ -163,13 +164,14 @@ def main(file, cli=False, num_sources=None, sources=None, nbl=512):
 
     # Process and save cumulative stacked image
     stack_lap = laplace(migrated_stack)[nbl:-nbl, nbl:-nbl]
-    np.save(out_dir / "rtm_stack.npy", stack_lap)
-    logger.info("Saved final stacked image to: %s", out_dir / "rtm_stack.npy")
+    out_stack_npy = out_dir / f"{timestamp}_rtm_stack.npy"
+    np.save(out_stack_npy, stack_lap)
+    logger.info("Saved final stacked image to: %s", out_stack_npy)
     plot_and_save_image(
         stack_lap,
         extent,
         title=f"RTM Stacked Image ({len(selected_indices)} sources)",
-        output_png=out_dir / "rtm_stack.png",
+        output_png=out_dir / f"{timestamp}_rtm_stack.png",
         cli=cli,
     )
 

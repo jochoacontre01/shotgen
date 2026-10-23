@@ -39,7 +39,8 @@ def main():
     else:
         raise ValueError("No data file was passed to the arguments, pass it with 'kirchhoff_migration.py path/to/file'")
 
-    setup_file_logging(dataset_dir=shotpath, script_name="kirchhoff_migration", logger=logger)
+    log_path = setup_file_logging(dataset_dir=shotpath, script_name="kirchhoff_migration", logger=logger)
+    timestamp = log_path.name[:15]
 
     name = shotpath.name
     dx_match = re.search(r'_(\d+(?:\.\d+)?)dx_', name)
@@ -76,12 +77,12 @@ def main():
     )
 
     image = migrator.run()
-    output_npy = shotpath / "kirchhoff_migrated.npy"
+    output_npy = shotpath / f"{timestamp}_kirchhoff_migrated.npy"
     try:
         np.save(output_npy, laplace(image))
         logger.info("Saved migrated image to: %s", output_npy)
     except OSError:
-        fallback_npy = Path("/tmp") / f"{name}_kirchhoff_migrated.npy"
+        fallback_npy = Path("/tmp") / f"{timestamp}_{name}_kirchhoff_migrated.npy"
         np.save(fallback_npy, image)
         logger.warning(
             "Dataset directory is read-only; saved migrated image to fallback path: %s",

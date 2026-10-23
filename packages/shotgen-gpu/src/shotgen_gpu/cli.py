@@ -6,6 +6,7 @@ import shutil
 import json
 import argparse
 import time
+from datetime import datetime
 import numpy as np
 import h5py
 from pathlib import Path
@@ -412,9 +413,10 @@ def _run_rtm_cli(cfg: dict, verbose: bool = False, config_file: str | Path | Non
     )
     image = rtm.run(save_wavefield=False)
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = Path(cfg.get("output_dir", "data/gpu_rtm_output"))
     output_dir.mkdir(parents=True, exist_ok=True)
-    out_file = output_dir / "rtm_image.npy"
+    out_file = output_dir / f"{timestamp}_rtm_image.npy"
     np.save(out_file, image)
     if config_file:
         cfg_p = Path(config_file)

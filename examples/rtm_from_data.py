@@ -27,7 +27,8 @@ def main(cli=False, file=None, t_start=None, t_end=None, t_taper=50.0):
     else:
         raise ValueError("No data file was passed to the arguments, pass it with 'rtm_from_data.py path/to/file")
     
-    setup_file_logging(dataset_dir=shotpath, script_name="rtm_from_data", logger=logger)
+    log_path = setup_file_logging(dataset_dir=shotpath, script_name="rtm_from_data", logger=logger)
+    timestamp = log_path.name[:15]
     logger.info("Loading shot record from: %s", shotpath)
     if t_start is not None or t_end is not None:
         logger.info("Migration time window: t_start=%s ms, t_end=%s ms, t_taper=%s ms", t_start, t_end, t_taper)
@@ -57,12 +58,12 @@ def main(cli=False, file=None, t_start=None, t_end=None, t_taper=50.0):
     
     # Exclude boundary (nbl) for plotting
     plotted_image = lap_image[nbl:-nbl, nbl:-nbl]
-    output_npy = shotpath / 'rtm_migrated.npy'
+    output_npy = shotpath / f"{timestamp}_rtm_migrated.npy"
     try:
         np.save(output_npy, plotted_image)
         logger.info("Saved migrated image to: %s", output_npy)
     except OSError:
-        fallback_npy = Path("/tmp") / f"{shotpath.name}_rtm_migrated.npy"
+        fallback_npy = Path("/tmp") / f"{timestamp}_{shotpath.name}_rtm_migrated.npy"
         np.save(fallback_npy, migrated_image)
         logger.warning(
             "Dataset directory is read-only; saved migrated image to fallback path: %s",

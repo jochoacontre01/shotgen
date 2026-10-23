@@ -138,18 +138,22 @@ Prioritize multiprocessing over multithreading for CPU-heavy modeling and travel
 - **Mandatory `__main__` Guards**: All CLI scripts and entrypoints invoking multiprocessing or batch migration **must** guard execution inside `if __name__ == "__main__":` to prevent child processes from recursively re-executing workflows.
 - **Active-Window Caching & In-Place Stacking**: For Kirchhoff PSDM, always use active-window lifecycle caching (evicting coordinates after their last required shot) and stream shot summation directly in-place (`output += shot_img`) to maintain a bounded memory footprint (~3-4 GB).
 
-### 5. Migration Execution Logging & Run Logs
-All migration entrypoints and workflows (including `examples/kirchhoff_migration.py` and `examples/rtm_from_data.py`) must persist execution logs directly in the target dataset directory:
+### 5. Migration Execution Logging, Code Versioning & Run Artifacts
+All migration entrypoints and workflows (including `examples/kirchhoff_migration.py`, `examples/rtm_from_data.py`, `examples/rtm.py`, `examples/kirchhoff.py`) must persist execution logs and generated artifacts directly in the target dataset directory:
 - **Log Location & Naming Convention**:
   - The log file must reside in the active dataset directory (`<dataset_dir>/`).
-  - Naming template: `<script_name>_%Y%m%d_%H%M%S.log` (e.g., `kirchhoff_migration_20261006_224500.log` or `rtm_from_data_20261006_224500.log`), where `%Y%m%d_%H%M%S` records the start date and time of the run.
+  - Naming template: `%Y%m%d_%H%M%S_<script_name>.log` (e.g., `20261005_223356_rtm_from_data.log`), where `%Y%m%d_%H%M%S` records the start date and time of the run.
+- **Generated Artifact Naming Convention**:
+  - All generated artifacts (`.npy`, `.png`, etc.) must be prefixed with the identical date and time string `%Y%m%d_%H%M%S_*` to sit directly alongside their corresponding log file (e.g., `20261005_223356_rtm_migrated.npy` alongside `20261005_223356_rtm_from_data.log`).
+- **Code Version Tracking in Logs**:
+  - The exact code version identifier (commit hash, branch name, and dirty status, e.g. `dfc96dbc... (feat/rtm-time-windowing-dirty)`) must be appended at the very top of every generated log file (`# Code Version: <version>`) and logged upon initialization to maintain strict provenance between code versions and generated datasets.
 - **Centralized Logging Setup**:
-  - Initialize file logging immediately upon resolving the dataset path using `shotgen.pylogger.setup_file_logging(dataset_dir, script_name, logger=logger)`.
+  - Initialize file logging immediately upon resolving the dataset path using `shotgen.pylogger.setup_file_logging(dataset_dir, script_name, logger=logger, timestamp=timestamp)`.
   - This attaches a standard `logging.FileHandler` to the logger hierarchy so all submodule operations (e.g., `shotgen.migration.kirchhoff`, `shotgen.io.segy`, `shotgen.models`) stream to both the console (via `TqdmLoggingHandler`) and the dataset log file simultaneously.
 - **Strict Prohibition of Bare `print()`**:
   - All status updates, timing metrics, and array diagnostics must pass through `logger.info()`, `logger.warning()`, or `logger.error()` instead of bare `print()` statements to ensure they are captured in the log file.
 - **Read-Only / Unwritable Directory Fallback**:
-  - If the dataset directory is read-only or lacks write permissions, file logging must automatically fall back to `/tmp/<dataset_name>_<script_name>_%Y%m%d_%H%M%S.log` and issue a warning, preventing permission crashes during execution on shared or protected volumes.
+  - If the dataset directory is read-only or lacks write permissions, file logging must automatically fall back to `/tmp/<dataset_name>_%Y%m%d_%H%M%S_<script_name>.log` and issue a warning, preventing permission crashes during execution on shared or protected volumes.
 
 ---
 

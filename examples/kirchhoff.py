@@ -8,7 +8,10 @@ from scipy.ndimage import laplace
 from matplotlib.colors import TwoSlopeNorm
 
 from shotgen.migration.kirchhoff import KirchhoffMigration
+from shotgen.pylogger import get_logger, setup_file_logging
 from shotgen.utils import setup_matplotlib_style
+
+logger = get_logger("kirchhoff")
 
 
 def main():
@@ -24,15 +27,18 @@ def main():
         print(f"Error: Dataset directory '{dataset_path}' not found. Please run shotrecord.py first.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"[kirchhoff.py] Loading dataset from: {dataset_path}")
+    log_path = setup_file_logging(dataset_dir=dataset_path, script_name="kirchhoff", logger=logger)
+    timestamp = log_path.name[:15]
+
+    logger.info("Loading dataset from: %s", dataset_path)
     migrator = KirchhoffMigration(dataset_dir=str(dataset_path))
 
-    print(f"[kirchhoff.py] Running Kirchhoff PSDM on grid shape: {migrator.vp.shape}...")
+    logger.info("Running Kirchhoff PSDM on grid shape: %s...", migrator.vp.shape)
     image = migrator.run()
 
-    out_file = dataset_path / "kirchhoff_migrated.npy"
+    out_file = dataset_path / f"{timestamp}_kirchhoff_migrated.npy"
     np.save(out_file, image)
-    print(f"[kirchhoff.py] Kirchhoff migration complete! Image saved to: {out_file}")
+    logger.info("Kirchhoff migration complete! Image saved to: %s", out_file)
 
     if not args.no_plot:
         plt.figure(figsize=(10, 5), dpi=150)
