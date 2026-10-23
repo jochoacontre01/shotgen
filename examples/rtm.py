@@ -34,6 +34,9 @@ def main():
     parser.add_argument("--device", type=str, default="auto", help="Compute device ('auto', 'cpu', 'cuda')")
     parser.add_argument("--no_plot", action="store_true", help="Skip display of plot window")
     parser.add_argument("--cli", action="store_true", help="Save plot preview in non-GUI terminal mode")
+    parser.add_argument("--t-start", type=float, default=None, help="Start time of migration window in ms (suppresses early-time direct arrivals)")
+    parser.add_argument("--t-end", type=float, default=None, help="End time of migration window in ms")
+    parser.add_argument("--t-taper", type=float, default=50.0, help="Cosine taper duration in ms at window edges (default: 50.0 ms)")
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset_dir)
@@ -49,6 +52,9 @@ def main():
         nbl=40,
         space_order=4,
         device=configured_device,
+        t_start=args.t_start,
+        t_end=args.t_end,
+        t_taper=args.t_taper,
     )
 
     image = rtm.run(save_wavefield=False)

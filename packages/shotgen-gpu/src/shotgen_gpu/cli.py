@@ -139,6 +139,9 @@ def main():
     parser.add_argument("--config", "-c", type=str, required=True, help="Path to JSON configuration file")
     parser.add_argument("--cli", action="store_true", help="Display the first shot record on the terminal using chafa after simulation")
     parser.add_argument("-v", "--verbose", action="store_true", help="Display GPU runtime and verbose simulation output when complete")
+    parser.add_argument("--t-start", type=float, default=None, help="Start time of migration window in ms (suppresses early-time direct arrivals)")
+    parser.add_argument("--t-end", type=float, default=None, help="End time of migration window in ms")
+    parser.add_argument("--t-taper", type=float, default=None, help="Cosine taper duration in ms at window edges (default: 50.0 ms)")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -162,7 +165,7 @@ def main():
     if task_type == "simulation":
         _run_simulation_cli(cfg, cli_enabled=cli_enabled, verbose=verbose_enabled, config_file=config_path)
     elif task_type == "rtm":
-        _run_rtm_cli(cfg, verbose=verbose_enabled, config_file=config_path)
+        _run_rtm_cli(cfg, verbose=verbose_enabled, config_file=config_path, args=args)
     else:
         print(f"Error: Unknown task type '{task_type}' in config", file=sys.stderr)
         sys.exit(1)
@@ -370,7 +373,7 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
 
 
 
-def _run_rtm_cli(cfg: dict, verbose: bool = False, config_file: str | Path | None = None):
+def _run_rtm_cli(cfg: dict, verbose: bool = False, config_file: str | Path | None = None, args: argparse.Namespace | None = None):
     t_start = time.time()
     if config_file is None:
         config_file = cfg.get("config_file") or cfg.get("_config_path")
@@ -379,12 +382,33 @@ def _run_rtm_cli(cfg: dict, verbose: bool = False, config_file: str | Path | Non
     space_order = cfg.get("space_order", 4)
     device = cfg.get("device", "auto")
 
+    t_mig_start = getattr(args, "t_start", None) if args is not None else None
+    if t_mig_start is None:
+        t_mig_start = cfg.get("t_start", cfg.get("t_mig_start"))
+    if t_mig_start is not None:
+        t_mig_start = float(t_mig_start)
+
+    t_mig_end = getattr(args, "t_end", None) if args is not None else None
+    if t_mig_end is None:
+        t_mig_end = cfg.get("t_end", cfg.get("t_mig_end"))
+    if t_mig_end is not None:
+        t_mig_end = float(t_mig_end)
+
+    t_mig_taper = getattr(args, "t_taper", None) if args is not None else None
+    if t_mig_taper is None:
+        t_mig_taper = cfg.get("t_taper", 50.0)
+    if t_mig_taper is not None:
+        t_mig_taper = float(t_mig_taper)
+
     rtm = ReverseTimeMigration(
         dataset_dir=dataset_dir,
         nbl=nbl,
         space_order=space_order,
         device=device,
         verbose=verbose,
+        t_start=t_mig_start,
+        t_end=t_mig_end,
+        t_taper=t_mig_taper,
     )
     image = rtm.run(save_wavefield=False)
 

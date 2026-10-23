@@ -118,6 +118,9 @@ class ReverseTimeMigration:
         dtype=np.float32,
         device="auto",
         verbose: bool = False,
+        t_start: float = None,
+        t_end: float = None,
+        t_taper: float = 50.0,
         **kwargs,
     ):
         self.verbose = verbose
@@ -184,6 +187,9 @@ class ReverseTimeMigration:
         self.tn = tn
         self.f0 = f0 / 1000.0 if (f0 is not None and f0 > 1.0) else f0
         self.dtype = dtype
+        self.t_start = t_start
+        self.t_end = t_end
+        self.t_taper = t_taper
 
         self._create_model()
 
@@ -222,7 +228,8 @@ class ReverseTimeMigration:
             self.receivers = rec_locations
 
             self._create_geometry()
-        self.shots = np.ascontiguousarray(self.shots)
+        if hasattr(self, "shots") and self.shots is not None:
+            self.shots = np.ascontiguousarray(self.shots)
         self._setup_solver()
 
     def _create_model(self):
@@ -251,7 +258,78 @@ class ReverseTimeMigration:
     def _setup_solver(self):
         self.solver = AcousticWaveSolver(self.model, self.geometry, space_order=self.space_order, time_order=self.time_order)
 
-    def run(self, save_wavefield=False, save_each=5, verbose=True, cli=False, preview=False, source_indices=None, return_individual=False):
+    def compute_time_weights(self, t_start=None, t_end=None, t_taper=None) -> np.ndarray:
+        """
+        Compute 1D time taper weights array w(t) in [0, 1] over the simulation time grid.
+
+        Parameters
+        ----------
+        t_start : float, optional
+            Start time of migration window in milliseconds (ms). If None, no early-time cutoff.
+        t_end : float, optional
+            End time of migration window in milliseconds (ms). If None, no late-time cutoff.
+        t_taper : float, optional
+            Cosine taper duration in milliseconds (ms) at window edges (default: 50.0 ms).
+
+        Returns
+        -------
+        np.ndarray
+            1D array of length geometry.nt with values between 0.0 and 1.0.
+        """
+        t_vals = np.linspace(self.t0, self.tn, self.geometry.nt)
+        weights = np.ones_like(t_vals, dtype=np.float32)
+
+        if t_start is None and t_end is None:
+            return weights
+
+        eff_start = self.t0 if t_start is None else float(t_start)
+        eff_end = self.tn if t_end is None else float(t_end)
+
+        if eff_start < self.t0:
+            eff_start = self.t0
+        if eff_end > self.tn:
+            eff_end = self.tn
+        if eff_start >= eff_end:
+            raise ValueError(f"t_start ({eff_start} ms) must be strictly less than t_end ({eff_end} ms).")
+
+        taper = 50.0 if t_taper is None else float(t_taper)
+        if taper < 0.0:
+            raise ValueError(f"t_taper ({taper} ms) cannot be negative.")
+
+        max_taper = (eff_end - eff_start) / 2.0
+        actual_taper = min(taper, max_taper)
+
+        for idx, t in enumerate(t_vals):
+            if t < eff_start or t > eff_end:
+                weights[idx] = 0.0
+            elif t_start is not None and actual_taper > 0.0 and t < eff_start + actual_taper:
+                weights[idx] = 0.5 * (1.0 - np.cos(np.pi * (t - eff_start) / actual_taper))
+            elif t_end is not None and actual_taper > 0.0 and t > eff_end - actual_taper:
+                weights[idx] = 0.5 * (1.0 + np.cos(np.pi * (t - (eff_end - actual_taper)) / actual_taper))
+            else:
+                weights[idx] = 1.0
+
+        return weights
+
+    def run(
+        self,
+        save_wavefield=False,
+        save_each=5,
+        verbose=True,
+        cli=False,
+        preview=False,
+        source_indices=None,
+        return_individual=False,
+        t_start=None,
+        t_end=None,
+        t_taper=None,
+    ):
+        eff_t_start = t_start if t_start is not None else self.t_start
+        eff_t_end = t_end if t_end is not None else self.t_end
+        eff_t_taper = t_taper if t_taper is not None else self.t_taper
+        weights = self.compute_time_weights(eff_t_start, eff_t_end, eff_t_taper)
+        if verbose and (eff_t_start is not None or eff_t_end is not None):
+            print(f"[RTM] Time windowing active: t_start={eff_t_start} ms, t_end={eff_t_end} ms, t_taper={eff_t_taper} ms")
         #if verbose:
         #    logger.setLevel(logging.INFO)
         if self.from_data:
@@ -316,6 +394,7 @@ class ReverseTimeMigration:
 
             image = Function(name="image", grid=self.model.grid)
             operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
+            self.t_weight.data[:] = weights
 
             prev_image_data = np.zeros_like(image.data) if return_individual else None
 
@@ -334,7 +413,7 @@ class ReverseTimeMigration:
                 else:
                     v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=None)
 
-                operator(u=u0, v=v, vp=self.model0.vp, dt=self.geometry.dt, residual=self.shots[i])
+                operator(u=u0, v=v, vp=self.model0.vp, dt=self.geometry.dt, residual=self.shots[i] * weights[:, None])
 
                 if return_individual:
                     curr_data = image.data.copy()
@@ -355,20 +434,21 @@ class ReverseTimeMigration:
             shots, us, vs = [], [], []
             image = Function(name="image", grid=self.model.grid)
             operator = self._imaging_operator(self.model, image, save_wavefield=save_wavefield)
+            self.t_weight.data[:] = weights
 
             for i in tqdm(range(self.n_sources), desc="Source", total=self.n_sources):
                 self.geometry.src_positions[0, :] = self.sources[i, :]
                 self.geometry.src.coordinates.data[0, :] = self.sources[i, :]
 
                 true_d, _, _ = self.solver.forward(vp=self.model.vp)
-                smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=True)
+                smooth_d, u0, _ = self.solver.forward(vp=self.model0.vp, save=None)
 
                 if save_wavefield:
                     v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=self.geometry.nt)
                 else:
                     v = TimeFunction(name="v", grid=self.model.grid, time_order=self.time_order, space_order=self.space_order, save=None)
 
-                residual = smooth_d.data - true_d.data
+                residual = (smooth_d.data - true_d.data) * weights[:, None]
                 shots.append(residual)
                 operator(u=u0, v=v, vp=self.model0.vp, dt=self.model0.critical_dt, residual=residual)
 
@@ -407,7 +487,8 @@ class ReverseTimeMigration:
             field=v.backward,
             expr=self.residual_source * dt**2 / model.m
         )
-        image_update = Eq(image, image+u*v)
+        self.t_weight = Function(name="t_weight", grid=model.grid, dimensions=(model.grid.time_dim,), shape=(self.geometry.nt,))
+        image_update = Eq(image, image + self.t_weight * u * v)
 
         return Operator([stencil_u, stencil_v] + src_sub + res_term + [image_update], subs=model.spacing_map)
 
