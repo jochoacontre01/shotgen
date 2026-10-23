@@ -145,8 +145,8 @@ All migration entrypoints and workflows (including `examples/kirchhoff_migration
   - Naming template: `%Y%m%d_%H%M%S_<script_name>.log` (e.g., `20261005_223356_rtm_from_data.log`), where `%Y%m%d_%H%M%S` records the start date and time of the run.
 - **Generated Artifact Naming Convention**:
   - All generated artifacts (`.npy`, `.png`, etc.) must be prefixed with the identical date and time string `%Y%m%d_%H%M%S_*` to sit directly alongside their corresponding log file (e.g., `20261005_223356_rtm_migrated.npy` alongside `20261005_223356_rtm_from_data.log`).
-- **Code Version Tracking in Logs**:
-  - The exact code version identifier (commit hash, branch name, and dirty status, e.g. `dfc96dbc... (feat/rtm-time-windowing-dirty)`) must be appended at the very top of every generated log file (`# Code Version: <version>`) and logged upon initialization to maintain strict provenance between code versions and generated datasets.
+- **Code Version & Invocation Command Tracking in Logs**:
+  - The exact code version identifier (commit hash, branch name, and dirty status, e.g. `dfc96dbc... (feat/rtm-time-windowing-dirty)`) must be appended at the very top of every generated log file (`# Code Version: <version>`), immediately followed by the exact invocation command (`# Command: python examples/rtm_from_data.py ...`), and logged upon initialization to maintain strict provenance between code versions, execution commands, and generated datasets.
 - **Centralized Logging Setup**:
   - Initialize file logging immediately upon resolving the dataset path using `shotgen.pylogger.setup_file_logging(dataset_dir, script_name, logger=logger, timestamp=timestamp)`.
   - This attaches a standard `logging.FileHandler` to the logger hierarchy so all submodule operations (e.g., `shotgen.migration.kirchhoff`, `shotgen.io.segy`, `shotgen.models`) stream to both the console (via `TqdmLoggingHandler`) and the dataset log file simultaneously.

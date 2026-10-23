@@ -13,6 +13,7 @@ from .pylogger import (
     add_file_handler,
     setup_file_logging,
     get_code_version,
+    get_invoked_command,
 )
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "add_file_handler",
     "setup_file_logging",
     "get_code_version",
+    "get_invoked_command",
 ]
 
 

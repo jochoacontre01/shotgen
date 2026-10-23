@@ -1,5 +1,6 @@
 import logging
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -136,11 +137,30 @@ def get_code_version() -> str:
             return "unknown"
 
 
+def get_invoked_command() -> str:
+    """
+    Returns the exact command-line string invoked to execute the current process.
+    """
+    if not sys.argv:
+        return "unknown"
+    exe = Path(sys.executable).name if sys.executable else "python"
+    first = sys.argv[0]
+    if first.endswith(".py") or first.endswith(".pyc"):
+        return f"{exe} " + " ".join(shlex.quote(a) for a in sys.argv)
+    elif first == "-c":
+        return f"{exe} -c ..."
+    else:
+        cmd_name = Path(first).name
+        rest = " " + " ".join(shlex.quote(a) for a in sys.argv[1:]) if len(sys.argv) > 1 else ""
+        return f"{cmd_name}{rest}"
+
+
 def setup_file_logging(
     dataset_dir: str | Path,
     script_name: str,
     logger: logging.Logger | None = None,
     timestamp: str | None = None,
+    command: str | None = None,
 ) -> Path:
     """
     Configures file logging for a migration script, saving logs to:
@@ -150,7 +170,7 @@ def setup_file_logging(
     `/tmp/<dataset_name>_%Y%m%d_%H%M%S_<script_name>.log`
     with a warning.
 
-    Writes the code version at the very top of the log file.
+    Writes the code version and invoked command at the very top of the log file.
 
     Returns the Path of the configured log file.
     """
@@ -163,6 +183,7 @@ def setup_file_logging(
     target_path = dataset_path / filename
 
     code_version = get_code_version()
+    invoked_cmd = command if command is not None else get_invoked_command()
 
     def _write_header(p: Path):
         try:
@@ -171,6 +192,7 @@ def setup_file_logging(
             with open(p, "a", encoding="utf-8") as f:
                 if is_new:
                     f.write(f"# Code Version: {code_version}\n")
+                    f.write(f"# Command: {invoked_cmd}\n")
                     f.write(f"# Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"# Script: {clean_script}\n\n")
         except Exception:
@@ -199,7 +221,7 @@ def setup_file_logging(
     add_file_handler(target_path, logger=logger)
 
     effective_logger = logger if logger is not None else get_logger(clean_script)
-    effective_logger.info("Session log initialized: %s | Code version: %s", target_path, code_version)
+    effective_logger.info("Session log initialized: %s | Code version: %s | Command: %s", target_path, code_version, invoked_cmd)
     return target_path
 
 
