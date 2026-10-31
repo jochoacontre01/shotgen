@@ -1,6 +1,6 @@
 {
     "task": "simulation",
-    "velocity_model": "simple_sinusoidal_fault",
+    "velocity_model": "simple_sinusoidal",
     "meters_per_cell": 1.0,
     "float_type": "float32",
     "dx": 1.0,

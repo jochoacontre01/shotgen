@@ -15,7 +15,7 @@ import time
 
 logger = get_logger("rtm_from_data")
 
-def main(cli=False, file=None, t_start=None, t_end=None, t_taper=50.0):
+def main(cli=False, file=None, t_start=None, t_end=None, t_taper=50.0, n_sources=None):
     setup_matplotlib_style()
     # 1. Locate and load the Sigsbee shot record file
     if file is not None:
@@ -43,14 +43,15 @@ def main(cli=False, file=None, t_start=None, t_end=None, t_taper=50.0):
         t_start=t_start,
         t_end=t_end,
         t_taper=t_taper,
-        # space_order=4
+        # space_order=4,
     )
     
     dx_spacing, dz_spacing = rtm.spacing
 
     # 5. Execute run method
     logger.info("Running Reverse Time Migration...")
-    migrated_image = rtm.run(save_wavefield=False, verbose=True, cli=cli, preview=True)
+    source_indices = list(range(n_sources)) if n_sources is not None else None
+    migrated_image = rtm.run(save_wavefield=False, verbose=True, cli=cli, preview=True, source_indices=source_indices)
 
     # 6. Post-process and Plotting
     # Apply Laplace filter to the migrated image to remove low-frequency acquisition footprints.
@@ -126,8 +127,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", type=str, help="Dataset file to process")
     parser.add_argument("-c", "--cli", action="store_true")
+    parser.add_argument("-n", "--n-sources", type=int, default=None, help="Number of sources to migrate")
     parser.add_argument("--t-start", type=float, default=None, help="Start time of migration window in ms (suppresses early-time direct arrivals)")
     parser.add_argument("--t-end", type=float, default=None, help="End time of migration window in ms")
     parser.add_argument("--t-taper", type=float, default=50.0, help="Cosine taper duration in ms at window edges (default: 50.0 ms)")
     args = parser.parse_args()
-    main(args.cli, args.file, t_start=args.t_start, t_end=args.t_end, t_taper=args.t_taper)
+    main(args.cli, args.file, t_start=args.t_start, t_end=args.t_end, t_taper=args.t_taper, n_sources=args.n_sources)
