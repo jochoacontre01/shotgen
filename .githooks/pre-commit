@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -e
+
+# Locate ruff in PATH or in the msc Conda environment
+if command -v ruff >/dev/null 2>&1; then
+    RUFF_BIN="ruff"
+elif [ -x "/home/jochoacontre/anaconda3/envs/msc/bin/ruff" ]; then
+    RUFF_BIN="/home/jochoacontre/anaconda3/envs/msc/bin/ruff"
+elif [ -x "$HOME/anaconda3/envs/msc/bin/ruff" ]; then
+    RUFF_BIN="$HOME/anaconda3/envs/msc/bin/ruff"
+elif [ -x "$HOME/miniconda3/envs/msc/bin/ruff" ]; then
+    RUFF_BIN="$HOME/miniconda3/envs/msc/bin/ruff"
+else
+    echo "[pre-commit] Error: 'ruff' linter not found in PATH or Conda 'msc' environment." >&2
+    exit 1
+fi
+
+# Get staged Python files (Added, Copied, Modified, Renamed)
+mapfile -t STAGED_PY < <(git diff --cached --name-only --diff-filter=ACMR -- '*.py')
+
+if [ "${#STAGED_PY[@]}" -eq 0 ]; then
+    exit 0
+fi
+
+echo "[pre-commit] Running ruff check --fix on ${#STAGED_PY[@]} staged Python file(s)..."
+set +e
+"$RUFF_BIN" check --fix "${STAGED_PY[@]}"
+RUFF_EXIT=$?
+set -e
+
+# Re-stage any files that ruff auto-fixed
+git add -- "${STAGED_PY[@]}"
+
+if [ "$RUFF_EXIT" -ne 0 ]; then
+    echo "[pre-commit] Ruff found unfixable lint errors. Please resolve them before committing." >&2
+    exit "$RUFF_EXIT"
+fi
+
+exit 0

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -e
+
+# Locate ruff in PATH or in the msc Conda environment
+if command -v ruff >/dev/null 2>&1; then
+    RUFF_BIN="ruff"
+elif [ -x "/home/jochoacontre/anaconda3/envs/msc/bin/ruff" ]; then
+    RUFF_BIN="/home/jochoacontre/anaconda3/envs/msc/bin/ruff"
+elif [ -x "$HOME/anaconda3/envs/msc/bin/ruff" ]; then
+    RUFF_BIN="$HOME/anaconda3/envs/msc/bin/ruff"
+elif [ -x "$HOME/miniconda3/envs/msc/bin/ruff" ]; then
+    RUFF_BIN="$HOME/miniconda3/envs/msc/bin/ruff"
+else
+    echo "[pre-push] Error: 'ruff' linter not found in PATH or Conda 'msc' environment." >&2
+    exit 1
+fi
+
+TARGETS=(packages examples scripts tests)
+
+echo "[pre-push] Running ruff check --fix across ${TARGETS[*]}..."
+set +e
+"$RUFF_BIN" check --fix "${TARGETS[@]}"
+RUFF_EXIT=$?
+set -e
+
+# Check if ruff modified any tracked files in target directories
+MODIFIED_FILES=$(git diff --name-only -- "${TARGETS[@]}")
+if [ -n "$MODIFIED_FILES" ]; then
+    echo "[pre-push] Ruff auto-fixed files; creating commit 'style(lint): auto-apply ruff lint fixes'..."
+    git add -- "${TARGETS[@]}"
+    git commit --no-verify -m "style(lint): auto-apply ruff lint fixes"
+fi
+
+if [ "$RUFF_EXIT" -ne 0 ]; then
+    echo "[pre-push] Ruff found unfixable lint errors. Push aborted." >&2
+    exit "$RUFF_EXIT"
+fi
+
+exit 0
