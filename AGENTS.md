@@ -34,16 +34,16 @@ shotgen/
 │           ├── config.py              # Device affinity & PureNvidiaCompiler overrides
 │           └── engine/                # Devito acoustic wave solvers & operators
 ├── tests/                             # Pytest test suite
-├── examples/                          # Reference scripts and workflows
+├── examples/                          # Reference scripts, workflows, and configs
+├── aux/                               # Auxiliary plotting and SEG-Y utilities
 ├── assets/                            # Sample geological and SEG-Y input files
-├── data/                              # Generated shot records and HDF5 storage
-└── shotgen/                           # [DEPRECATED / LEGACY] Monolithic source tree
+└── data/                              # Generated shot records and HDF5 storage
 ```
 
 ### Critical Architecture Rules for Agents
 - **STRICTLY MODIFY `packages/` ONLY**:
-  - All modern source code lives under `packages/shotgen-core/src/shotgen/` and `packages/shotgen-gpu/src/shotgen_gpu/`.
-  - **NEVER** edit files in the root `shotgen/` folder. The root `shotgen/` directory is legacy/deprecated and slated for removal.
+  - All package source code lives under `packages/shotgen-core/src/shotgen/` and `packages/shotgen-gpu/src/shotgen_gpu/`.
+  - Do not recreate a monolithic `shotgen/` package directory at the repository root.
 - **Physical Process & Runtime Isolation**:
   - `shotgen-core` and `shotgen-gpu` must **NEVER** be imported together in the same Python process.
   - Doing so creates symbol interposition conflicts between GNU OpenMP (`libgomp.so`) and NVIDIA OpenACC/OpenMP (`libnvomp.so`), leading to `RTLD_GLOBAL` deadlock and CUDA driver crashes.
@@ -140,7 +140,7 @@ Prioritize multiprocessing over multithreading for CPU-heavy modeling and travel
 - **Active-Window Caching & In-Place Stacking**: For Kirchhoff PSDM, always use active-window lifecycle caching (evicting coordinates after their last required shot) and stream shot summation directly in-place (`output += shot_img`) to maintain a bounded memory footprint (~3-4 GB).
 
 ### 5. Migration Execution Logging, Code Versioning & Run Artifacts
-All migration entrypoints and workflows (including `examples/kirchhoff_migration.py`, `examples/rtm_from_data.py`, `examples/rtm.py`, `examples/kirchhoff.py`) must persist execution logs and generated artifacts directly in the target dataset directory:
+All migration entrypoints and workflows (including `examples/kirchhoff_migration.py`, `examples/rtm_from_data.py`, and `examples/rtm_debug_sources.py`) must persist execution logs and generated artifacts directly in the target dataset directory:
 - **Log Location & Naming Convention**:
   - The log file must reside in the active dataset directory (`<dataset_dir>/`).
   - Naming template: `%Y%m%d_%H%M%S_<script_name>.log` (e.g., `20261005_223356_rtm_from_data.log`), where `%Y%m%d_%H%M%S` records the start date and time of the run.
@@ -175,7 +175,7 @@ All migration entrypoints and workflows (including `examples/kirchhoff_migration
 
 ### Run GPU Simulation via CLI (`shotgen-gpu`)
 ```bash
-shotgen-gpu --config examples/test_config.json --output-dir data/sim_output
+shotgen-gpu --config examples/configs/test_config.json --output-dir data/sim_output
 ```
 
 ### Run Kirchhoff Pre-Stack Depth Migration (PSDM) Example

@@ -35,9 +35,11 @@ shotgen/
 │               ├── cli.py             # CLI entrypoint (`shotgen-gpu`)
 │               └── config.py          # Device affinity & PureNvidiaCompiler overrides
 └── examples/
+    ├── configs/
+    │   └── test_config.json           # JSON configuration example for shotgen-gpu CLI
     ├── kirchhoff_migration.py         # Kirchhoff Migration using shotgen-core
-    ├── run_born_simulation.py         # Subprocess GPU execution example
-    └── test_config.json               # JSON configuration example for shotgen-gpu CLI
+    ├── rtm_from_data.py               # Reverse Time Migration workflow
+    └── run_born_simulation.py         # Subprocess GPU execution example
 ```
 
 ### Key Technical Benefits of the Split:
@@ -139,7 +141,7 @@ shot_data = shot_rec.run(ms=150)
 ### C. Headless GPU Simulation via `shotgen-gpu` CLI
 You can execute GPU wave propagation directly from the command line using a JSON parameter configuration file.
 
-#### Example Config (`examples/test_config.json`):
+#### Example Config (`examples/configs/test_config.json`):
 ```json
 {
   "task": "simulation",
@@ -162,13 +164,13 @@ You can execute GPU wave propagation directly from the command line using a JSON
 
 #### Running the CLI:
 ```bash
-shotgen-gpu --config examples/test_config.json
+shotgen-gpu --config examples/configs/test_config.json
 # To display GPU runtime profiling stats and verbose simulation details:
-shotgen-gpu --config examples/test_config.json -v
+shotgen-gpu --config examples/configs/test_config.json -v
 ```
 or via python:
 ```bash
-python3 -m shotgen_gpu.cli --config examples/test_config.json -v
+python3 -m shotgen_gpu.cli --config examples/configs/test_config.json -v
 ```
 
 ---
