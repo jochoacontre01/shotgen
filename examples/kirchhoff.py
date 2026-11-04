@@ -8,7 +8,7 @@ from scipy.ndimage import laplace
 from matplotlib.colors import TwoSlopeNorm
 
 from shotgen.migration.kirchhoff import KirchhoffMigration
-from shotgen.pylogger import get_logger, setup_file_logging
+from shotgen.pylogger import get_logger, setup_file_logging, log_array_stats
 from shotgen.utils import setup_matplotlib_style
 
 logger = get_logger("kirchhoff")
@@ -35,6 +35,7 @@ def main():
 
     logger.info("Running Kirchhoff PSDM on grid shape: %s...", migrator.vp.shape)
     image = migrator.run()
+    log_array_stats(logger, "migrated_image", image)
 
     out_file = dataset_path / f"{timestamp}_kirchhoff_migrated.npy"
     np.save(out_file, image)

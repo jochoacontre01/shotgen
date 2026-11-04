@@ -91,6 +91,17 @@ def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None, verbos
     if require_f0 and f0 is None:
         raise ValueError(f"f0 is required for RTM but was not found in {meta_path} and not provided as an argument.")
 
+    try:
+        from shotgen.pylogger import get_logger, log_array_stats
+        rtm_logger = get_logger("shotgen.migration.rtm")
+        log_array_stats(rtm_logger, "vp", vp)
+        log_array_stats(rtm_logger, "shots", shots)
+        log_array_stats(rtm_logger, "sources", sources)
+        log_array_stats(rtm_logger, "receivers", receivers)
+        log_array_stats(rtm_logger, "time", time)
+    except ImportError:
+        pass
+
     return vp, sources, receivers, shots, time, f0, dx, dz
 
 
@@ -427,6 +438,12 @@ class ReverseTimeMigration:
             self.us = np.array(us)
             self.vs = np.array(vs)
             self.image = image.data
+            try:
+                from shotgen.pylogger import get_logger, log_array_stats
+                rtm_logger = get_logger("shotgen.migration.rtm")
+                log_array_stats(rtm_logger, "migrated_image", self.image)
+            except ImportError:
+                pass
             if return_individual:
                 return self.image, individual_images
             return self.image
@@ -460,6 +477,12 @@ class ReverseTimeMigration:
             self.us = np.array(us)
             self.vs = np.array(vs)
             self.image = image.data
+            try:
+                from shotgen.pylogger import get_logger, log_array_stats
+                rtm_logger = get_logger("shotgen.migration.rtm")
+                log_array_stats(rtm_logger, "migrated_image", self.image)
+            except ImportError:
+                pass
             return self.image
 
     def _imaging_operator(self, model, image, save_wavefield=False):

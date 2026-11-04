@@ -9,7 +9,7 @@ import numpy as np
 import skfmm
 from tqdm import tqdm
 from shotgen.io import SegyIO
-from shotgen.pylogger import get_logger, log_execution_time
+from shotgen.pylogger import get_logger, log_execution_time, log_array_stats
 from scipy.ndimage import gaussian_filter
 import subprocess
 import matplotlib.pyplot as plt
@@ -68,6 +68,11 @@ def load_dataset_dir(dataset_dir, require_f0=False, provided_f0=None, verbose=Tr
 
         if verbose:
             logger.info(f"Loaded dataset '{dataset_dir}': {n_sources} shots x {n_receivers} receivers ({n_traces:,} traces) | Velocity grid {vp.shape[0]}x{vp.shape[1]}")
+            log_array_stats(logger, "vp", vp)
+            log_array_stats(logger, "shots", shots)
+            log_array_stats(logger, "sources", sources)
+            log_array_stats(logger, "receivers", receivers)
+            log_array_stats(logger, "time", time)
 
         return vp, sources, receivers, shots, time, f0, dx, dz
 
@@ -223,8 +228,12 @@ class KirchhoffMigration:
         self.traveltime_dict = {}
 
         if self.vp is not None:
+            log_array_stats(logger, "vp (migration grid)", self.vp)
             self.model = KirchhoffModel(shape=self.vp.shape, origin=self.origin)
             self._gather_unique_coords()
+
+        if self.src is not None:
+            log_array_stats(logger, "wavelet", self.src)
 
         if self.wavelet_delay is None:
             self._wavelet_peak_delay()
@@ -421,5 +430,7 @@ class KirchhoffMigration:
                     expired_coords = [c for c in list(self.traveltime_dict.keys()) if self.coord_last.get(c, -1) < b_end]
                     for c in expired_coords:
                         del self.traveltime_dict[c]
+
+                log_array_stats(logger, "migrated_output", self.output)
 
             return self.output

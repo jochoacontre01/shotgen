@@ -9,7 +9,7 @@ from matplotlib.colors import TwoSlopeNorm
 
 from shotgen_gpu.config import configure_devito_device
 from shotgen_gpu.engine.rtm import ReverseTimeMigration
-from shotgen.pylogger import get_logger, setup_file_logging
+from shotgen.pylogger import get_logger, setup_file_logging, log_array_stats
 
 logger = get_logger("rtm")
 
@@ -66,6 +66,7 @@ def main():
     )
 
     image = rtm.run(save_wavefield=False)
+    log_array_stats(logger, "migrated_image", image)
 
     out_file = dataset_path / f"{timestamp}_rtm_migrated.npy"
     np.save(out_file, image)

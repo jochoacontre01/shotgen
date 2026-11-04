@@ -11,7 +11,7 @@ import cmocean
 from scipy.ndimage import laplace
 
 from shotgen.migration import KirchhoffMigration
-from shotgen.pylogger import get_logger, setup_file_logging
+from shotgen.pylogger import get_logger, setup_file_logging, log_array_stats
 from shotgen.utils import setup_matplotlib_style
 
 logger = get_logger("kirchhoff_migration")
@@ -77,6 +77,7 @@ def main():
     )
 
     image = migrator.run()
+    log_array_stats(logger, "migrated_image", image)
     output_npy = shotpath / f"{timestamp}_kirchhoff_migrated.npy"
     try:
         np.save(output_npy, laplace(image))

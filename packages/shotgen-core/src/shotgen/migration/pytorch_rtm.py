@@ -2,6 +2,9 @@ import os
 import numpy as np
 from tqdm import tqdm
 from shotgen.migration.kirchhoff import load_dataset_dir
+from shotgen.pylogger import get_logger, log_array_stats
+
+logger = get_logger("shotgen.migration.pytorch_rtm")
 
 
 class ReverseTimeMigrationGPU:
@@ -45,6 +48,13 @@ class ReverseTimeMigrationGPU:
         self.dt = time[1] - time[0]
         self.nshots = self.shot_record.shape[0]
         self.nreceivers = len(self.receivers)
+
+        log_array_stats(logger, "velocity_model", self.velocity_model)
+        log_array_stats(logger, "shot_record", self.shot_record)
+        log_array_stats(logger, "sources", self.sources)
+        log_array_stats(logger, "receivers", self.receivers)
+        if self.wavelet is not None:
+            log_array_stats(logger, "wavelet", self.wavelet)
 
         import torch
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -98,4 +108,6 @@ class ReverseTimeMigrationGPU:
                 return loss.item()
             optimizer.step(closure)
 
-        return scatter.detach().cpu().numpy()
+        scatter_arr = scatter.detach().cpu().numpy()
+        log_array_stats(logger, "migrated_scatter", scatter_arr)
+        return scatter_arr

@@ -7,7 +7,7 @@ from pathlib import Path
 from scipy.ndimage import laplace
 from shotgen.sampleshot import LoadShotRecord
 from shotgen.migration import ReverseTimeMigration
-from shotgen.pylogger import get_logger, setup_file_logging
+from shotgen.pylogger import get_logger, setup_file_logging, log_array_stats
 from shotgen.utils import setup_matplotlib_style
 import argparse
 import subprocess
@@ -89,14 +89,7 @@ def main(cli=False, file=None, t_start=None, t_end=None, t_taper=50.0, n_sources
     vmax = np.max(plotted_image)
     norm = TwoSlopeNorm(vcenter=0.0, vmin=0.1*vmin, vmax=0.1*vmax)
     logger.info("Plotting results...")
-    logger.info(
-        "Image stats - Shape: %s, Max: %s, Min: %s, Mean: %s, Std: %s",
-        plotted_image.shape,
-        np.amax(plotted_image),
-        np.amin(plotted_image),
-        np.mean(plotted_image),
-        np.std(plotted_image),
-    )
+    log_array_stats(logger, "plotted_image", plotted_image)
     fig = plt.figure(figsize=(10, 5), dpi=150)
     im = plt.imshow(
         plotted_image.T,
