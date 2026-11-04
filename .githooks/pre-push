@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-# Locate ruff in PATH or in the msc Conda environment
+# 1. Locate ruff in PATH or in the msc Conda environment
 if command -v ruff >/dev/null 2>&1; then
     RUFF_BIN="ruff"
 elif [ -x "/home/jochoacontre/anaconda3/envs/msc/bin/ruff" ]; then
@@ -12,6 +12,20 @@ elif [ -x "$HOME/miniconda3/envs/msc/bin/ruff" ]; then
     RUFF_BIN="$HOME/miniconda3/envs/msc/bin/ruff"
 else
     echo "[pre-push] Error: 'ruff' linter not found in PATH or Conda 'msc' environment." >&2
+    exit 1
+fi
+
+# 2. Locate pytest in PATH or in the msc Conda environment
+if command -v pytest >/dev/null 2>&1; then
+    PYTEST_BIN="pytest"
+elif [ -x "/home/jochoacontre/anaconda3/envs/msc/bin/pytest" ]; then
+    PYTEST_BIN="/home/jochoacontre/anaconda3/envs/msc/bin/pytest"
+elif [ -x "$HOME/anaconda3/envs/msc/bin/pytest" ]; then
+    PYTEST_BIN="$HOME/anaconda3/envs/msc/bin/pytest"
+elif [ -x "$HOME/miniconda3/envs/msc/bin/pytest" ]; then
+    PYTEST_BIN="$HOME/miniconda3/envs/msc/bin/pytest"
+else
+    echo "[pre-push] Error: 'pytest' not found in PATH or Conda 'msc' environment." >&2
     exit 1
 fi
 
@@ -36,4 +50,16 @@ if [ "$RUFF_EXIT" -ne 0 ]; then
     exit "$RUFF_EXIT"
 fi
 
+echo "[pre-push] Running full pytest suite on tests/..."
+set +e
+"$PYTEST_BIN" tests/
+PYTEST_EXIT=$?
+set -e
+
+if [ "$PYTEST_EXIT" -ne 0 ]; then
+    echo "[pre-push] Pytest suite failed (exit code $PYTEST_EXIT). Push aborted." >&2
+    exit "$PYTEST_EXIT"
+fi
+
+echo "[pre-push] All lint and pytest checks passed."
 exit 0

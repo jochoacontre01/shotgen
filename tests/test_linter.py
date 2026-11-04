@@ -39,8 +39,8 @@ def test_git_hooks_configured():
     assert hooks_path == ".githooks", f"Expected core.hooksPath to be '.githooks', got '{hooks_path}'"
 
 
-def test_pre_commit_and_pre_push_hooks_auto_fix(tmp_path):
-    """Verify pre-commit and pre-push hooks automatically fix lint issues and commit them."""
+def test_pre_commit_and_pre_push_hooks_auto_fix_and_pytest_gate(tmp_path):
+    """Verify pre-commit and pre-push hooks auto-fix lint issues and gate pushes on pytest results."""
     # Initialize an isolated temporary git repository
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
@@ -59,7 +59,12 @@ def test_pre_commit_and_pre_push_hooks_auto_fix(tmp_path):
     for folder in ("packages", "examples", "scripts", "tests"):
         (tmp_path / folder).mkdir()
 
-    # 1. Test pre-commit hook: stage a file with an unused import (F401) and unsorted imports (I001)
+    # Add a passing unit test in tmp_path/tests/
+    dummy_test = tmp_path / "tests" / "test_dummy.py"
+    dummy_test.write_text("def test_ok():\n    assert 1 + 1 == 2\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tests/test_dummy.py"], cwd=tmp_path, check=True)
+
+    # 1. Test pre-commit hook: stage a file with an unused import (F401)
     sample_script = tmp_path / "scripts" / "sample.py"
     sample_script.write_text("import sys\nimport os\n\nprint(sys.version)\n", encoding="utf-8")
 
@@ -78,7 +83,7 @@ def test_pre_commit_and_pre_push_hooks_auto_fix(tmp_path):
     assert "import os" not in committed_content
     assert "import sys" in committed_content
 
-    # 2. Test pre-push hook (Option B): bypass pre-commit with --no-verify, then run pre-push
+    # 2. Test pre-push hook (Option B + pytest gate passing): bypass pre-commit with --no-verify, then run pre-push
     sample_script.write_text("import sys\nimport math\n\nprint(sys.version)\n", encoding="utf-8")
     subprocess.run(["git", "add", "scripts/sample.py"], cwd=tmp_path, check=True)
     subprocess.run(
@@ -107,3 +112,17 @@ def test_pre_commit_and_pre_push_hooks_auto_fix(tmp_path):
         check=True,
     ).stdout.strip()
     assert last_commit_msg == "style(lint): auto-apply ruff lint fixes"
+
+    # 3. Test pre-push hook aborts when a pytest test fails
+    dummy_test.write_text("def test_broken():\n    assert False\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tests/test_dummy.py"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "test: introduce broken test"], cwd=tmp_path, check=True, capture_output=True)
+
+    failed_push_res = subprocess.run(
+        [str(hooks_dir / "pre-push")],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert failed_push_res.returncode != 0, "Expected pre-push to abort when pytest fails"
