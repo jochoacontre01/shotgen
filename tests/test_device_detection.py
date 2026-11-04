@@ -1,7 +1,8 @@
-import pytest
 import os
+
+import pytest
 from devito import configuration
-from shotgen import ShotRecord, detect_device, configure_devito_device
+from shotgen import ShotRecord, configure_devito_device, detect_device
 
 
 def test_detect_device_return_type():

@@ -1,9 +1,10 @@
 import os
-import shutil
-import pytest
+
 import numpy as np
-from shotgen.sampleshot import ShotRecord
+import pytest
 from shotgen.migration import KirchhoffMigration, ReverseTimeMigration, load_dataset_dir
+from shotgen.sampleshot import ShotRecord
+
 
 @pytest.fixture
 def dummy_dataset_dir(tmpdir):

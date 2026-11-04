@@ -1,8 +1,8 @@
 import json
-from pathlib import Path
+
 from shotgen.cli import main as core_main
-from shotgen_gpu.cli import main as gpu_main
 from shotgen.sampleshot import ShotRecord
+from shotgen_gpu.cli import main as gpu_main
 
 
 def test_shotgen_core_cli_copies_config(tmp_path, monkeypatch):

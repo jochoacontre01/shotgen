@@ -1,6 +1,6 @@
 import os
 import time
-import pytest
+
 import numpy as np
 import segyio
 from shotgen.io import SegyIO

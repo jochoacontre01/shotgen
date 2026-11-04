@@ -1,8 +1,7 @@
-import os
-import json
 from pathlib import Path
+
+from shotgen import GeoModel, ShotRecord
 from shotgen.runner import run_gpu_simulation
-from shotgen import ShotRecord, GeoModel
 
 
 def main():

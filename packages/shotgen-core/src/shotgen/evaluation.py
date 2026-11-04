@@ -96,7 +96,7 @@ def structural_similarity_index(img1, img2, data_range=None, win_size=7, K1=0.01
 
 
 __all__ = [
-    "signal_to_noise_ratio",
     "contrast_to_noise_ratio",
+    "signal_to_noise_ratio",
     "structural_similarity_index",
 ]

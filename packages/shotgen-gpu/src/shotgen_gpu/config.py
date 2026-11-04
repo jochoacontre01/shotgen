@@ -1,11 +1,12 @@
+import ctypes
+import importlib.machinery
 import os
+import shutil
+import subprocess
 import sys
 import types
-import importlib.machinery
-import shutil
-import ctypes
-import subprocess
 import warnings
+
 
 def _disable_torch_import():
     """Prevent PyTorch / libgomp symbol interposition in Devito GPU process memory."""
@@ -31,8 +32,8 @@ os.environ["OMP_TARGET_OFFLOAD"] = "DISABLED"
 os.environ["NVCOMPILER_ACC_NOTIFY"] = "0"
 
 try:
-    from devito import configuration
     import devito.arch.compiler as dac
+    from devito import configuration
 
     configuration["log-level"] = "WARNING"
 
@@ -73,10 +74,10 @@ def detect_device():
 
     if shutil.which("nvidia-smi"):
         try:
-            res = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            res = subprocess.run(["nvidia-smi"], capture_output=True, check=False)
             if res.returncode == 0:
                 return "cuda"
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
 
     if _check_cuda_lib():
@@ -91,7 +92,7 @@ def _check_cuda_lib():
         try:
             ctypes.CDLL(libname)
             return True
-        except Exception:
+        except OSError:
             pass
     return False
 
@@ -142,7 +143,7 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             configuration["platform"] = target_platform
             configuration["compiler"] = target_compiler
             configuration["language"] = target_language
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             warnings.warn(f"Failed to set Devito GPU configuration ({e}). Falling back to CPU.", category=UserWarning)
             return configure_devito_device("cpu", verbose=verbose)
         device = "cuda"
@@ -161,7 +162,7 @@ def configure_devito_device(device="auto", platform=None, compiler=None, languag
             configuration["platform"] = target_platform
             configuration["compiler"] = target_compiler
             configuration["language"] = target_language
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             warnings.warn(f"Failed to set Devito CPU configuration: {e}")
         device = "cpu"
 

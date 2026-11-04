@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+
 import numpy as np
 
 # Add project root to sys.path if running directly
@@ -10,8 +11,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from shotgen.evaluation import (
     contrast_to_noise_ratio,
     signal_to_noise_ratio,
-    structural_similarity_index
+    structural_similarity_index,
 )
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -47,7 +49,7 @@ def main():
         
     try:
         arr = np.load(args.file)
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"Error: Failed to load '{args.file}'. {e}", file=sys.stderr)
         sys.exit(1)
         
@@ -67,7 +69,7 @@ def main():
             
         try:
             ref_arr = np.load(args.reference)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"Error: Failed to load reference '{args.reference}'. {e}", file=sys.stderr)
             sys.exit(1)
             

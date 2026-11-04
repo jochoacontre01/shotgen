@@ -1,7 +1,13 @@
 import re
+
 import numpy as np
-from pathlib import Path
-from shotgen.pylogger import get_code_version, get_invoked_command, setup_file_logging, get_logger, log_array_stats
+from shotgen.pylogger import (
+    get_code_version,
+    get_invoked_command,
+    get_logger,
+    log_array_stats,
+    setup_file_logging,
+)
 
 
 def test_get_code_version():

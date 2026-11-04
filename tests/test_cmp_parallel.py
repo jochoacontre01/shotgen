@@ -1,6 +1,6 @@
 import numpy as np
-import pytest
 from shotgen.sampleshot import ShotRecord
+
 
 def test_cmp_parallel_simulation():
     nx, nz = 50, 40

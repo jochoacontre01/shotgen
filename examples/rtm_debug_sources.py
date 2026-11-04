@@ -1,15 +1,16 @@
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 import argparse
 import subprocess
 import time
 from pathlib import Path
+
 import cmocean
-from matplotlib.colors import TwoSlopeNorm
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import TwoSlopeNorm
 from scipy.ndimage import laplace
-
 from shotgen.migration import ReverseTimeMigration
 from shotgen.pylogger import get_logger, setup_file_logging
 from shotgen.utils import setup_matplotlib_style

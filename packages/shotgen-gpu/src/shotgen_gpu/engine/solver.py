@@ -1,8 +1,10 @@
-import os
 import gc
+import os
+
 import numpy as np
-from tqdm import tqdm
 from scipy.ndimage import gaussian_filter
+from tqdm import tqdm
+
 from shotgen_gpu.config import configure_devito_device
 
 os.environ["DEVITO_LOGGING"] = "WARNING"
@@ -18,9 +20,9 @@ def _get_pylops():
     Lazy import helper for PyLops with PyTorch import isolation
     to prevent symbol interposition or OpenACC conflict with nvc++.
     """
+    import importlib.machinery
     import sys
     import types
-    import importlib.machinery
 
     if "torch" not in sys.modules:
         class DummyTensor:
@@ -84,7 +86,7 @@ class AcousticWaveSolverWrapper:
         self.n_receivers = receivers.shape[1] if receivers.ndim == 3 else len(receivers)
 
     def run(self, ms: float = 500.0, save_wavefield: bool = False, save_each: int = 20):
-        pylops, AcousticWave2D = _get_pylops()
+        _pylops, AcousticWave2D = _get_pylops()
 
         v0 = gaussian_filter(self.vel, sigma=self.smooth)
         dv = (self.vel**(-2) - v0**(-2)).astype(self.float_type)

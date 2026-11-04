@@ -4,8 +4,8 @@ from .pytorch_rtm import ReverseTimeMigrationGPU
 __all__ = [
     "KirchhoffMigration",
     "KirchhoffModel",
-    "load_dataset_dir",
     "ReverseTimeMigrationGPU",
+    "load_dataset_dir",
 ]
 
 

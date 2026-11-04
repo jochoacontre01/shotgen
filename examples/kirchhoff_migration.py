@@ -1,17 +1,16 @@
-from pathlib import Path
-import re
-import os
-import time
 import argparse
+import re
 import subprocess
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
-import cmocean
-from scipy.ndimage import laplace
+import time
+from pathlib import Path
 
+import cmocean
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import TwoSlopeNorm
+from scipy.ndimage import laplace
 from shotgen.migration import KirchhoffMigration
-from shotgen.pylogger import get_logger, setup_file_logging, log_array_stats
+from shotgen.pylogger import get_logger, log_array_stats, setup_file_logging
 from shotgen.utils import setup_matplotlib_style
 
 logger = get_logger("kirchhoff_migration")
@@ -112,7 +111,7 @@ def main():
         temp_img = "img.png"
         plt.savefig(temp_img, dpi=150)
         plt.close(fig)
-        subprocess.run(f"chafa -w 9 {temp_img}".split())
+        subprocess.run(f"chafa -w 9 {temp_img}".split(), check=False)
         time.sleep(0.5)
         # try:
         #    os.remove(temp_img)

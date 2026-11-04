@@ -103,7 +103,7 @@ class GeoModel:
 __all__ = ["GeoModel", "resample_velocity_model"]
 
 
-def resample_velocity_model(vel: np.ndarray, dx_orig: float, dz_orig: float, target_dx: float = None, target_dz: float = None):
+def resample_velocity_model(vel: np.ndarray, dx_orig: float, dz_orig: float, target_dx: float | None = None, target_dz: float | None = None):
     """
     Resamples a 2D velocity model matrix (nx, nz) to target spatial spacings target_dx, target_dz
     while preserving total physical extent L_x and L_z.

@@ -1,5 +1,5 @@
-from .solver import AcousticWaveSolverWrapper
 from .rtm import ReverseTimeMigration
+from .solver import AcousticWaveSolverWrapper
 
 __all__ = [
     "AcousticWaveSolverWrapper",

@@ -1,31 +1,29 @@
-import os
-import sys
-import shutil
-
-
-import json
 import argparse
+import json
+import shutil
+import sys
 import time
 from datetime import datetime
-import numpy as np
-import h5py
 from pathlib import Path
-from scipy.ndimage import gaussian_filter
 
-from shotgen_gpu.config import configure_devito_device, detect_device
-from shotgen_gpu.engine.solver import AcousticWaveSolverWrapper
-from shotgen_gpu.engine.rtm import ReverseTimeMigration
+import h5py
+import numpy as np
+from scipy.ndimage import gaussian_filter
 from shotgen.io import SegyIO
-from shotgen.models import GeoModel, resample_velocity_model
+from shotgen.models import resample_velocity_model
 from shotgen.sampleshot import (
-    load_marmousi,
+    ShotRecord,
+    _find_assets_dir,
     load_bpsalt,
+    load_marmousi,
     load_overthrust,
     load_sigsbee,
-    _find_assets_dir,
-    ShotRecord
 )
-from shotgen.utils import generate_simulation_dir_name, resolve_simulation_output_dir
+from shotgen.utils import resolve_simulation_output_dir
+
+from shotgen_gpu.config import configure_devito_device
+from shotgen_gpu.engine.rtm import ReverseTimeMigration
+from shotgen_gpu.engine.solver import AcousticWaveSolverWrapper
 
 
 def _load_velocity_model(cfg: dict):
@@ -289,7 +287,7 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
         verbose=verbose,
     )
 
-    shot_run, us, wavelet = solver.run(ms=ms, save_wavefield=cfg.get("save_wavefield", False))
+    shot_run, _us, wavelet = solver.run(ms=ms, save_wavefield=cfg.get("save_wavefield", False))
 
     cfg.update({
         "nx": nx,

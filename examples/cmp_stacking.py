@@ -1,10 +1,9 @@
-from matplotlib import pyplot as plt
-import numpy as np
-from tqdm import tqdm
-from shotgen.sampleshot import LoadShotRecord
-from shotgen.utils import setup_matplotlib_style
 from pathlib import Path
 
+import numpy as np
+from matplotlib import pyplot as plt
+from shotgen.sampleshot import LoadShotRecord
+from shotgen.utils import setup_matplotlib_style
 
 setup_matplotlib_style()
 shotpath = Path(__file__).resolve().parents[1] / "data/shot1_forCMP_dataset"

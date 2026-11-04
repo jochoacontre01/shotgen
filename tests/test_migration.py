@@ -1,8 +1,10 @@
 import os
-import pytest
+
 import numpy as np
+import pytest
+from shotgen.migration import KirchhoffMigration, ReverseTimeMigration
 from shotgen.sampleshot import ShotRecord, load_marmousi
-from shotgen.migration import KirchhoffMigration, ReverseTimeMigration, load_dataset_dir
+
 
 @pytest.fixture(scope="module")
 def small_migration_dataset(tmp_path_factory):
@@ -279,8 +281,9 @@ def test_kirchhoff_parallel_concurrency_and_equality():
     reaching peak concurrency equal to number of shots (when n_jobs >= n_shots),
     and produces results numerically identical to sequential execution.
     """
-    import time
     import threading
+    import time
+
     import shotgen.migration.kirchhoff as km_module
 
     nx, nz = 100, 100
@@ -319,8 +322,7 @@ def test_kirchhoff_parallel_concurrency_and_equality():
         nonlocal active_count, max_concurrent
         with lock:
             active_count += 1
-            if active_count > max_concurrent:
-                max_concurrent = active_count
+            max_concurrent = max(max_concurrent, active_count)
         time.sleep(0.02)  # brief pause to ensure overlap across threads
         try:
             return original_process(*args, **kwargs)

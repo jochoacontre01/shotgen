@@ -1,11 +1,9 @@
-import os
 from pathlib import Path
-import numpy as np
-import pytest
 
-from shotgen.io import SegyIO
+import numpy as np
 from shotgen.cli import _load_velocity_model_core, _run_simulation_core
-from shotgen_gpu.cli import _load_velocity_model, _run_simulation_cli
+from shotgen.io import SegyIO
+from shotgen_gpu.cli import _run_simulation_cli
 
 
 def test_simple_sinusoidal_segy_io():
@@ -39,11 +37,11 @@ def test_velocity_model_parsing_by_path(tmp_path):
         "output_dir": str(out_dir_core),
     }
 
-    vel, nx, nz, dx, dz = _load_velocity_model_core(cfg_core)
+    vel, nx, nz, _dx, _dz = _load_velocity_model_core(cfg_core)
     assert vel is not None
     assert nx > 0 and nz > 0
 
-    shot, saved_dir = _run_simulation_core(cfg_core)
+    _shot, _saved_dir = _run_simulation_core(cfg_core)
     assert (out_dir_core / "traces.segy").exists()
     assert (out_dir_core / "metadata.h5").exists()
 
@@ -72,11 +70,11 @@ def test_velocity_model_parsing_by_keyword(tmp_path):
         "output_dir": str(out_dir_core),
     }
 
-    vel, nx, nz, dx, dz = _load_velocity_model_core(cfg_core)
+    vel, nx, nz, _dx, _dz = _load_velocity_model_core(cfg_core)
     assert vel is not None
     assert nx > 0 and nz > 0
 
-    shot, saved_dir = _run_simulation_core(cfg_core)
+    _shot, _saved_dir = _run_simulation_core(cfg_core)
     assert (out_dir_core / "traces.segy").exists()
     assert (out_dir_core / "metadata.h5").exists()
 

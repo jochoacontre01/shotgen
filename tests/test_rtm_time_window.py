@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 from shotgen_gpu.engine.rtm import ReverseTimeMigration
 
 
@@ -163,9 +163,10 @@ def test_rtm_migration_with_time_window():
 
 def test_rtm_cli_flags(monkeypatch, tmp_path):
     """Test that CLI flags --t-start, --t-end, and --t-taper correctly pass into ReverseTimeMigration."""
-    from shotgen_gpu.cli import main
     import json
     import sys
+
+    from shotgen_gpu.cli import main
 
     # Write a dummy config
     cfg = {

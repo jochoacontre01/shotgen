@@ -1,14 +1,14 @@
+
 import numpy as np
 import pytest
 import segyio
-import pathlib
 from shotgen.sampleshot import (
-    load_marmousi,
-    load_sigsbee,
-    load_bpsalt,
-    load_overthrust,
-    map_coordinate_to_index,
     _find_assets_dir,
+    load_bpsalt,
+    load_marmousi,
+    load_overthrust,
+    load_sigsbee,
+    map_coordinate_to_index,
 )
 
 overthrust_file = _find_assets_dir() / "marine_overthrust_3d.segy"

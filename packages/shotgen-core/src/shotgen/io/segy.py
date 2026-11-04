@@ -1,10 +1,11 @@
 import os
-import time
 import struct
+import time
+
 import numpy as np
 import segyio
 
-from shotgen.pylogger import get_logger, log_execution_time
+from shotgen.pylogger import get_logger
 
 logger = get_logger("shotgen.io.segy")
 
@@ -114,7 +115,7 @@ class SegyIO:
             logger.debug(f"Attempting memory-mapped IO for file: {filepath}")
             res = SegyIO._read_mmap(filepath)
             method = "memory-mapped I/O"
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
             logger.debug(f"Memory mapping failed ({e}); falling back to vectorized segyio.")
             res = SegyIO._read_vectorized_segyio(filepath)
             method = "vectorized segyio"
@@ -296,13 +297,13 @@ class SegyIO:
         try:
             data, dx, dz = SegyIO._read_model_mmap(filepath)
             method = "memory-mapped I/O"
-        except Exception:
+        except (OSError, ValueError, RuntimeError, KeyError):
             data, dx, dz = SegyIO._read_model_vectorized(filepath)
             method = "vectorized segyio"
 
         if target_dx is not None or target_dz is not None:
             from shotgen.models import resample_velocity_model
-            data, nx_new, nz_new, dx, dz = resample_velocity_model(data, dx, dz, target_dx, target_dz)
+            data, _nx_new, _nz_new, dx, dz = resample_velocity_model(data, dx, dz, target_dx, target_dz)
 
         if verbose:
             t_elapsed = time.perf_counter() - t0

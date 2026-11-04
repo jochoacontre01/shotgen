@@ -1,18 +1,19 @@
-import os
 import logging
+import os
+import subprocess
 import warnings
-from time import sleep
-import multiprocessing as mp
-from multiprocessing import get_context, current_process
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import current_process, get_context
+from time import sleep
+
+import matplotlib.pyplot as plt
 import numpy as np
 import skfmm
-from tqdm import tqdm
-from shotgen.io import SegyIO
-from shotgen.pylogger import get_logger, log_execution_time, log_array_stats
 from scipy.ndimage import gaussian_filter
-import subprocess
-import matplotlib.pyplot as plt
+from tqdm import tqdm
+
+from shotgen.io import SegyIO
+from shotgen.pylogger import get_logger, log_array_stats, log_execution_time
 from shotgen.utils import setup_matplotlib_style
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="multiprocessing")
@@ -169,12 +170,12 @@ class KirchhoffMigration:
         shots: np.ndarray = None,
         time: np.ndarray = None,
         spacing: tuple = (1.0, 1.0),
-        dataset_dir: str = None,
+        dataset_dir: str | None = None,
         n_jobs: int = -1,
         backend: str = "threading",
-        smooth_sigma: float = None,
+        smooth_sigma: float | None = None,
         cli: bool = False,
-        batch_size: int = None,
+        batch_size: int | None = None,
         dtype: type = np.float32,
         preview: bool = False,
     ):
@@ -248,12 +249,10 @@ class KirchhoffMigration:
             plt.savefig(temp_img, dpi=150)
             plt.close(fig)
             if self.cli and current_process().name == 'MainProcess':
-                subprocess.run(f"chafa {temp_img}".split())
+                subprocess.run(f"chafa {temp_img}".split(), check=False)
                 sleep(0.25)
-                try:
+                if os.path.exists(temp_img):
                     os.remove(temp_img)
-                except Exception:
-                    pass
             else:
                 plt.show(block=True)
 
@@ -315,7 +314,7 @@ class KirchhoffMigration:
         phi[idx_x, idx_z] = 0
         return skfmm.travel_time(phi, vp, dx=[dx, dz]).astype(self.dtype)
 
-    def run(self, n_jobs: int = None, backend: str = None, show_progress: bool = True, batch_size: int = None):
+    def run(self, n_jobs: int | None = None, backend: str | None = None, show_progress: bool = True, batch_size: int | None = None):
         """
         Executes Kirchhoff PSDM using batch-of-shots parallel migration and active-window caching.
         Uses multiprocessing (fork) for GIL-free parallel Eikonal traveltimes, ThreadPoolExecutor for shot migration,

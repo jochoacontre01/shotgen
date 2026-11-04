@@ -1,8 +1,10 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import argparse
 import subprocess
+
+import matplotlib.pyplot as plt
+import numpy as np
 from shotgen.utils import setup_matplotlib_style
+
 
 def main():
     setup_matplotlib_style()
@@ -32,8 +34,8 @@ def main():
     if args.c:
         plt.savefig("image.png", dpi=150)
         plt.close(fig)
-        subprocess.run(["timg", "image.png"])
-        subprocess.run(["rm", "image.png"])
+        subprocess.run(["timg", "image.png"], check=False)
+        subprocess.run(["rm", "image.png"], check=False)
     else:
         plt.show()
 

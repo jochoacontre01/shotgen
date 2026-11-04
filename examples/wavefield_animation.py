@@ -10,19 +10,19 @@ Usage:
     python examples/wavefield_animation.py --config examples/configs/quick_config_bpsalt.json --source 0 --step 6.0
 """
 
-import os
-import sys
+import argparse
 import gc
 import json
-import argparse
+import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import animation
 from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 
@@ -33,15 +33,14 @@ except ImportError:
     CMAP_WAVEFIELD = plt.cm.seismic
 
 # Configure Devito device and suppress verbose banner
-from shotgen_gpu.config import configure_devito_device, detect_device
-from devito import Function, TimeFunction, ConditionalDimension, Eq, Operator
-from examples.seismic import Model, AcquisitionGeometry
+from devito import ConditionalDimension, Eq, Function, Operator, TimeFunction
+from examples.seismic import AcquisitionGeometry, Model
 from examples.seismic.acoustic.operators import iso_stencil
-
-from shotgen.pylogger import get_logger, setup_file_logging
-from shotgen.utils import generate_simulation_dir_name, setup_matplotlib_style
-from shotgen.sampleshot import ShotRecord
 from shotgen.cli import _load_velocity_model_core
+from shotgen.pylogger import get_logger, setup_file_logging
+from shotgen.sampleshot import ShotRecord
+from shotgen.utils import generate_simulation_dir_name, setup_matplotlib_style
+from shotgen_gpu.config import configure_devito_device
 
 setup_matplotlib_style()
 
@@ -508,7 +507,7 @@ def main():
             cfg = json.load(f)
 
     # Build geometry and resolve effective parameters
-    vel, sources, receivers, shot_rec = build_simulation_geometry(cfg)
+    vel, sources, receivers, _shot_rec = build_simulation_geometry(cfg)
     n_sources = len(sources)
 
     if args.source < 0 or args.source >= n_sources:
@@ -558,7 +557,7 @@ def main():
 
     # Setup centralized run logging
     log_file = setup_file_logging(dataset_dir, "wavefield_animation", logger=logger)
-    timestamp = log_file.name[:15]
+    log_file.name[:15]
     logger.info(f"Run execution log initialized at: {log_file}")
     logger.info(f"Target simulation dataset directory: {dataset_dir}")
 
@@ -621,7 +620,7 @@ def main():
         fps=args.fps,
     )
 
-    logger.info(f"Wavefield animation workflow completed successfully!")
+    logger.info("Wavefield animation workflow completed successfully!")
     logger.info(f"Final MP4 video: {mp4_path}")
 
 

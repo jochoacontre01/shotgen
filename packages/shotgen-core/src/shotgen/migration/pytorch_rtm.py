@@ -1,6 +1,8 @@
 import os
+
 import numpy as np
 from tqdm import tqdm
+
 from shotgen.migration.kirchhoff import load_dataset_dir
 from shotgen.pylogger import get_logger, log_array_stats
 
@@ -72,12 +74,12 @@ class ReverseTimeMigrationGPU:
 
         init_velocity_model = torch.from_numpy(self.velocity_model).float().to(self.device)
 
-        self.acquisition_params = dict(
-            source_locations=source_locations,
-            receiver_locations=receiver_locations,
-            source_amplitudes=source_amplitudes,
-            init_velocity_model=init_velocity_model
-        )
+        self.acquisition_params = {
+            "source_locations": source_locations,
+            "receiver_locations": receiver_locations,
+            "source_amplitudes": source_amplitudes,
+            "init_velocity_model": init_velocity_model
+        }
 
         return self.acquisition_params
 

@@ -1,8 +1,9 @@
 import os
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import matplotlib.colors as mcolors
+
 import cmocean
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+from matplotlib import animation
 
 
 def generate_video(shot_record, output_path=None, source_idx=0):
@@ -52,7 +53,7 @@ def generate_video(shot_record, output_path=None, source_idx=0):
         shot_record.origin[-1]
     )
 
-    im_bg = ax.imshow(shot_record.v0.T, extent=extent, cmap='gray', alpha=0.3, aspect='auto')
+    ax.imshow(shot_record.v0.T, extent=extent, cmap='gray', alpha=0.3, aspect='auto')
 
     frame_0 = us_src_clean[0]
     vmin = min(frame_0.min(), -1e-10)

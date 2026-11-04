@@ -18,19 +18,19 @@ Usage:
 """
 
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
-import gc
 import argparse
-import subprocess
-import time
+import gc
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import animation
 from tqdm import tqdm
 
 try:
@@ -41,13 +41,12 @@ except ImportError:
     CMAP_WAVEFIELD = plt.cm.seismic
     CMAP_IMAGE = plt.cm.seismic
 
-from devito import TimeFunction, Function, ConditionalDimension, Eq, Operator, solve
+from devito import ConditionalDimension, Eq, Function, Operator, TimeFunction, solve
 from examples.seismic import PointSource
 from examples.seismic.acoustic.operators import iso_stencil
-
-from shotgen_gpu.engine.rtm import ReverseTimeMigration
 from shotgen.pylogger import get_logger, setup_file_logging
 from shotgen.utils import setup_matplotlib_style
+from shotgen_gpu.engine.rtm import ReverseTimeMigration
 
 logger = get_logger("rtm_wavefield_animation")
 
@@ -121,7 +120,7 @@ def run_rtm_animation_simulation(
     nbl: int = 128,
     space_order: int = 4,
     time_order: int = 2,
-    f0: float = None,
+    f0: float | None = None,
     device: str = "auto",
 ):
     """
@@ -340,8 +339,7 @@ def create_rtm_dissection_animation(
     # Standard global amplitude normalization matching wavefield_animation.py
     def compute_global_norm(arr, min_clip=1e-6):
         vmax_ref = float(np.percentile(np.abs(arr), 99.8))
-        if vmax_ref < min_clip:
-            vmax_ref = min_clip
+        vmax_ref = max(vmax_ref, min_clip)
         vmax_f = max(vmax_ref * 0.7, min_clip)
         return mcolors.TwoSlopeNorm(vmin=-vmax_f, vcenter=0.0, vmax=vmax_f)
 

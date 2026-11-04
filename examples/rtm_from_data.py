@@ -1,17 +1,18 @@
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
-import numpy as np
-import matplotlib.pyplot as plt
-import cmocean
-from pathlib import Path
-from scipy.ndimage import laplace
-from shotgen.sampleshot import LoadShotRecord
-from shotgen.migration import ReverseTimeMigration
-from shotgen.pylogger import get_logger, setup_file_logging, log_array_stats
-from shotgen.utils import setup_matplotlib_style
 import argparse
 import subprocess
 import time
+from pathlib import Path
+
+import cmocean
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.ndimage import laplace
+from shotgen.migration import ReverseTimeMigration
+from shotgen.pylogger import get_logger, log_array_stats, setup_file_logging
+from shotgen.utils import setup_matplotlib_style
 
 logger = get_logger("rtm_from_data")
 
@@ -110,7 +111,7 @@ def main(cli=False, file=None, t_start=None, t_end=None, t_taper=50.0, n_sources
     if cli:
         plt.savefig("img.png", dpi=150)
         plt.close(fig)
-        subprocess.run("chafa -w 9 img.png".split())
+        subprocess.run(["chafa", "-w", "9", "img.png"], check=False)
         time.sleep(0.5)
         # subprocess.run("rm img.png".split())
     else:

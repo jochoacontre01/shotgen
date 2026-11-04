@@ -1,6 +1,5 @@
-import shutil
-import segyio
 import numpy as np
+import segyio
 
 input_file = 'data/simple_sinusoidal_fault_commonshot_2000nx_1000nz_1dx_1dz_25src_96rec_1550ms_fs_6ms_25Hz_5groupoffset_25shotoffset_noiseless/smooth_velocity.segy'
 output_file = 'data/simple_sinusoidal_fault_commonshot_2000nx_1000nz_1dx_1dz_25src_96rec_1550ms_fs_6ms_25Hz_5groupoffset_25shotoffset_noiseless/smooth_velocity.segy'

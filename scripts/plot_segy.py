@@ -1,12 +1,11 @@
-import segyio
-import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
-from shotgen.utils import setup_matplotlib_style
-import numpy as np
 import argparse
-import subprocess
 import os
+import subprocess
 import time
+
+import matplotlib.pyplot as plt
+import segyio
+from shotgen.utils import setup_matplotlib_style
 
 setup_matplotlib_style()
 
@@ -63,7 +62,7 @@ plt.tight_layout()
 if args.cli:
     plt.savefig("segy_img.png", dpi=150)
     plt.close(fig)
-    subprocess.run("chafa segy_img.png".split())
+    subprocess.run(["chafa", "segy_img.png"], check=False)
     time.sleep(0.5)
     os.remove("segy_img.png")
 else:

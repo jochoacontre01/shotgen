@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 
@@ -100,7 +99,7 @@ def resolve_simulation_output_dir(cfg: dict, default_base_dir: str = "data") -> 
     appends the generated directory name.
     If 'output_dir' specifies a custom distinct leaf folder, returns that folder directly.
     """
-    if "output_dir" in cfg and cfg["output_dir"]:
+    if cfg.get("output_dir"):
         raw_out = str(cfg["output_dir"]).strip()
         out_p = Path(raw_out)
         if raw_out.endswith(("/", "\\")) or out_p.name in ("data", "datasets", "output", "sim_output", "simulations"):
@@ -118,13 +117,11 @@ def setup_matplotlib_style():
     - no grid
     - external ticks only on all four spines
     """
-    import matplotlib
     import matplotlib.pyplot as plt
 
     try:
-        import scienceplots
         plt.style.use(["science", "no-latex"])
-    except Exception:
+    except (OSError, ValueError):
         pass
 
     plt.rcParams["figure.figsize"] = (10, 5)

@@ -1,10 +1,5 @@
-import json
-import tempfile
 import numpy as np
-from pathlib import Path
-import pytest
-
-from shotgen.sampleshot import ShotRecord, LoadShotRecord
+from shotgen.sampleshot import LoadShotRecord, ShotRecord
 from shotgen.utils import generate_simulation_dir_name
 from shotgen_gpu.cli import _run_simulation_cli
 

@@ -1,25 +1,22 @@
-import os
-import sys
-import shutil
-
-
-import json
 import argparse
+import json
+import sys
 from pathlib import Path
+
 import numpy as np
 import yaml
 
-from shotgen.sampleshot import (
-    ShotRecord,
-    load_marmousi,
-    load_bpsalt,
-    load_overthrust,
-    load_sigsbee,
-    _find_assets_dir
-)
 from shotgen.io import SegyIO
 from shotgen.models import resample_velocity_model
-from shotgen.utils import generate_simulation_dir_name, resolve_simulation_output_dir
+from shotgen.sampleshot import (
+    ShotRecord,
+    _find_assets_dir,
+    load_bpsalt,
+    load_marmousi,
+    load_overthrust,
+    load_sigsbee,
+)
+from shotgen.utils import resolve_simulation_output_dir
 
 
 def _load_velocity_model_core(cfg: dict):

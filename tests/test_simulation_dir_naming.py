@@ -1,7 +1,7 @@
 import json
-from pathlib import Path
-from shotgen.utils import generate_simulation_dir_name, resolve_simulation_output_dir
+
 from shotgen.cli import main as core_main
+from shotgen.utils import generate_simulation_dir_name, resolve_simulation_output_dir
 
 
 def test_naming_with_model_and_fs_ms():

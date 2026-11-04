@@ -1,7 +1,6 @@
 import numpy as np
-import pytest
-from shotgen.sampleshot import ShotRecord
 from shotgen.models import GeoModel
+from shotgen.sampleshot import ShotRecord
 
 
 def test_shotrecord_nonempty_simulation_pylops():

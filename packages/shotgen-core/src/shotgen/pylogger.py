@@ -35,7 +35,7 @@ class TqdmLoggingHandler(logging.Handler):
             else:
                 sys.stderr.write(msg + "\n")
             self.flush()
-        except Exception:
+        except Exception:  # noqa: BLE001
             self.handleError(record)
 
 
@@ -99,9 +99,12 @@ def add_file_handler(
 
     # Also attach to existing shotgen.* loggers
     for log_name, obj in list(logging.Logger.manager.loggerDict.items()):
-        if isinstance(obj, logging.Logger) and (log_name == "shotgen" or log_name.startswith("shotgen.")):
-            if obj not in targets:
-                targets.append(obj)
+        if (
+            isinstance(obj, logging.Logger)
+            and (log_name == "shotgen" or log_name.startswith("shotgen."))
+            and obj not in targets
+        ):
+            targets.append(obj)
 
     for tgt in targets:
         if tgt and handler not in tgt.handlers:
@@ -133,11 +136,11 @@ def get_code_version() -> str:
         ).strip()
         dirty = "-dirty" if status else ""
         return f"{commit} ({branch}{dirty})"
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         try:
             import shotgen
             return getattr(shotgen, "__version__", "unknown")
-        except Exception:
+        except ImportError:
             return "unknown"
 
 
@@ -149,7 +152,7 @@ def get_invoked_command() -> str:
         return "unknown"
     exe = Path(sys.executable).name if sys.executable else "python"
     first = sys.argv[0]
-    if first.endswith(".py") or first.endswith(".pyc"):
+    if first.endswith((".py", ".pyc")):
         return f"{exe} " + " ".join(shlex.quote(a) for a in sys.argv)
     elif first == "-c":
         return f"{exe} -c ..."
@@ -199,8 +202,8 @@ def setup_file_logging(
                     f.write(f"# Command: {invoked_cmd}\n")
                     f.write(f"# Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"# Script: {clean_script}\n\n")
-        except Exception:
-            pass
+        except OSError as err:
+            sys.stderr.write(f"[WARNING] Could not write log header to {p}: {err}\n")
 
     # Test write permissions; fallback to /tmp if read-only or unwritable
     try:
@@ -302,6 +305,6 @@ def log_array_stats(
             "Array '%s' stats - Shape: %s, Dimensions: %d, Min: %.6g, Max: %.6g, Mean: %.6g, Dtype: %s",
             name, shape, ndim, a_min, a_max, a_mean, dtype,
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.log(level, "Array '%s' stats - (error extracting stats: %s)", name, e)
 

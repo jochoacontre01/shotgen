@@ -1,10 +1,9 @@
 import os
-import shutil
 import tempfile
+
 import numpy as np
-import pytest
-from shotgen import ShotRecord, SegyIO
-from shotgen.migration.kirchhoff import KirchhoffMigration, load_dataset_dir
+from shotgen import SegyIO, ShotRecord
+from shotgen.migration.kirchhoff import KirchhoffMigration
 
 
 def test_fs_ms_resampling_and_segy_header():

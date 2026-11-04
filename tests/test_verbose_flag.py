@@ -1,10 +1,8 @@
-import os
 import json
-import pytest
-from pathlib import Path
+import os
 
-from shotgen_gpu.config import configure_devito_device
 from shotgen_gpu.cli import _run_simulation_cli
+from shotgen_gpu.config import configure_devito_device
 
 
 def test_configure_devito_device_verbose():

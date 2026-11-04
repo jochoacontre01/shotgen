@@ -1,9 +1,9 @@
 import json
-import pytest
-import numpy as np
-from unittest.mock import patch
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 if str(EXAMPLES_DIR) not in sys.path:
@@ -11,9 +11,6 @@ if str(EXAMPLES_DIR) not in sys.path:
 
 from wavefield_animation import (
     main,
-    build_simulation_geometry,
-    simulate_wavefield,
-    create_animation,
 )
 
 

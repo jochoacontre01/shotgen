@@ -1,23 +1,21 @@
-import pathlib
 import os
+import pathlib
 import shutil
 import subprocess
 import time
 import warnings
+
 import h5py
-import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
-from scipy.ndimage import gaussian_filter
+import numpy as np
 import segyio
 import seisplot
+from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
-from joblib import Parallel, delayed
 
 from shotgen.io import SegyIO
-from shotgen.geometry import map_coordinate_to_index
-from shotgen.runner import run_gpu_simulation_dict
 from shotgen.pylogger import get_logger, log_execution_time
+from shotgen.runner import run_gpu_simulation_dict
 from shotgen.utils import setup_matplotlib_style
 
 logger = get_logger("shotgen.sampleshot")
@@ -42,12 +40,12 @@ def detect_device():
         return "cpu"
     if shutil.which("nvidia-smi"):
         try:
-            res = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            res = subprocess.run(["nvidia-smi"], capture_output=True, check=False)
             if res.returncode == 0:
                 logger.debug("NVIDIA GPU detected via nvidia-smi with OpenACC compiler available.")
                 return "cuda"
-        except Exception:
-            pass
+        except (OSError, subprocess.SubprocessError) as err:
+            logger.debug("nvidia-smi check failed: %s", err)
     return "cpu"
 
 
@@ -273,8 +271,8 @@ class ShotRecord:
         if cli:
             try:
                 plt.switch_backend("Agg")
-            except Exception:
-                pass
+            except (ImportError, ValueError, RuntimeError) as err:
+                logger.debug("Could not switch matplotlib backend to Agg: %s", err)
         if not self._model_ready and (not hasattr(self, "vel") or self.vel is None):
             raise ValueError("You need to create a model first")
 
@@ -308,12 +306,12 @@ class ShotRecord:
         if hq:
             name = _find_assets_dir().parent / "examples/velmodel.png"
             plt.savefig(name, dpi=150)
-            subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"])
+            subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"], check=False)
         if cli:
             plt.savefig("img.png", dpi=150)
             plt.close(fig)
-            subprocess.run(["chafa", "img.png"])
-            subprocess.run(["rm", "img.png"])
+            subprocess.run(["chafa", "img.png"], check=False)
+            subprocess.run(["rm", "img.png"], check=False)
         else:
             plt.show()
             plt.close(fig)
@@ -474,7 +472,7 @@ class ShotRecord:
                     self.apply_noise()
 
             if self.fs_ms is not None and self.fs_ms > 0:
-                dt_model_ms = ms / (self.shot_run.shape[-1] - 1) if self.shot_run.shape[-1] > 1 else self.fs_ms
+                ms / (self.shot_run.shape[-1] - 1) if self.shot_run.shape[-1] > 1 else self.fs_ms
                 new_nt = int(np.round(ms / self.fs_ms)) + 1
                 t_orig = np.linspace(0, ms, self.shot_run.shape[-1])
                 t_new = np.linspace(0, ms, new_nt)
@@ -542,8 +540,8 @@ class ShotRecord:
         if cli:
             try:
                 plt.switch_backend("Agg")
-            except Exception:
-                pass
+            except (ImportError, ValueError, RuntimeError) as err:
+                logger.debug("Could not switch matplotlib backend to Agg: %s", err)
         if self.shot_run is None:
             print("No simulation data available to show.")
             return
@@ -623,13 +621,13 @@ class ShotRecord:
         if hq:
             name = _find_assets_dir().parent / "examples/shots.png"
             plt.savefig(name, dpi=150)
-            subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"])
+            subprocess.run(["bash", "-ic", f"open-on-termux '{name}'"], check=False)
         if cli:
             plt.savefig("img.png", dpi=150)
             plt.close(fig)
-            subprocess.run("chafa img.png".split())
+            subprocess.run(["chafa", "img.png"], check=False)
             time.sleep(0.5)
-            subprocess.run("rm img.png".split())
+            subprocess.run(["rm", "img.png"], check=False)
         else:
             plt.show()
             plt.close(fig)
@@ -653,7 +651,9 @@ class LoadShotRecord:
 
     def _load_shot(self, path):
         import os
+
         import h5py
+
         from shotgen.io import SegyIO
 
         if not os.path.isdir(path):
@@ -719,9 +719,7 @@ def _inject_headers_if_needed(filepath, dx, dz):
         interval_val = f.bin[segyio.BinField.Interval]
         tracecount = len(f.trace)
         n2 = 801 if tracecount == 641601 else tracecount
-        if interval_val != int(dz * 1000):
-            need_injection = True
-        elif tracecount > 1 and f.header[1][segyio.TraceField.GroupX] != int(dx * 1000):
+        if interval_val != int(dz * 1000) or tracecount > 1 and f.header[1][segyio.TraceField.GroupX] != int(dx * 1000):
             need_injection = True
 
     if need_injection:

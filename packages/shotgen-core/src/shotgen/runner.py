@@ -1,6 +1,6 @@
+import json
 import subprocess
 import sys
-import json
 import tempfile
 from pathlib import Path
 
@@ -12,7 +12,7 @@ def run_gpu_simulation(config_file: str, cli: bool = False, verbose: bool = Fals
         cmd.append("--cli")
     if verbose:
         cmd.append("-v")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"GPU Simulation process failed:\n{result.stderr}")
     print(result.stdout)

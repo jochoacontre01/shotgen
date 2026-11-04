@@ -1,11 +1,10 @@
+import pathlib
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.path import Path
 from shotgen.sampleshot import LoadShotRecord
 from shotgen.utils import setup_matplotlib_style
-import matplotlib.pyplot as plt
-from matplotlib.path import Path
-import pathlib
-import numpy as np
-import h5py
-import os
 
 setup_matplotlib_style()
 

@@ -1,16 +1,18 @@
 import os
-import numpy as np
-from tqdm import tqdm
-from scipy.ndimage import gaussian_filter
-from scipy.interpolate import interp1d
-from devito import TimeFunction, Operator, Eq, solve, Function
-from examples.seismic import AcquisitionGeometry, PointSource, Model
-from examples.seismic.acoustic import AcousticWaveSolver
-from shotgen_gpu.config import configure_devito_device
-import sys
 import subprocess
-import matplotlib.pyplot as plt
 import time
+
+import matplotlib.pyplot as plt
+import numpy as np
+from devito import Eq, Function, Operator, TimeFunction, solve
+from examples.seismic import AcquisitionGeometry, Model, PointSource
+from examples.seismic.acoustic import AcousticWaveSolver
+from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter
+from tqdm import tqdm
+
+from shotgen_gpu.config import configure_devito_device
+
 
 def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None, verbose=True):
     """Helper to load dataset for Devito GPU RTM."""
@@ -115,7 +117,7 @@ class ReverseTimeMigration:
         self,
         vp: np.ndarray = None,
         *args,
-        dataset_dir: str = None,
+        dataset_dir: str | None = None,
         sources: np.ndarray = None,
         receivers: np.ndarray = None,
         shots: np.ndarray = None,
@@ -123,14 +125,14 @@ class ReverseTimeMigration:
         spacing: tuple = (1.0, 1.0),
         nbl: int = 40,
         smooth_sigma: float = 5.0,
-        f0: float = None,
+        f0: float | None = None,
         space_order: int = 8,
         time_order: int = 2,
         dtype=np.float32,
         device="auto",
         verbose: bool = False,
-        t_start: float = None,
-        t_end: float = None,
+        t_start: float | None = None,
+        t_end: float | None = None,
         t_taper: float = 50.0,
         **kwargs,
     ):
@@ -209,7 +211,7 @@ class ReverseTimeMigration:
             self.receivers = receivers
             self.shots = np.transpose(shots, (0, 2, 1)).astype(self.dtype)
             self._create_geometry()
-            dt_data = (time[1] - time[0]) * 1000.0 if is_seconds else (time[1] - time[0])
+            (time[1] - time[0]) * 1000.0 if is_seconds else (time[1] - time[0])
             # self.geometry.resample(dt_data)
 
 
@@ -296,10 +298,8 @@ class ReverseTimeMigration:
         eff_start = self.t0 if t_start is None else float(t_start)
         eff_end = self.tn if t_end is None else float(t_end)
 
-        if eff_start < self.t0:
-            eff_start = self.t0
-        if eff_end > self.tn:
-            eff_end = self.tn
+        eff_start = max(eff_start, self.t0)
+        eff_end = min(eff_end, self.tn)
         if eff_start >= eff_end:
             raise ValueError(f"t_start ({eff_start} ms) must be strictly less than t_end ({eff_end} ms).")
 
@@ -367,9 +367,8 @@ class ReverseTimeMigration:
 
             if preview:
                 try:
-                    import scienceplots
                     plt.style.use(["science", "no-latex"])
-                except Exception:
+                except (OSError, ValueError):
                     pass
                 plt.rcParams["figure.figsize"] = (10, 5)
                 plt.rcParams["figure.dpi"] = 150
@@ -387,7 +386,7 @@ class ReverseTimeMigration:
                 plt.tight_layout()
                 if cli:
                     plt.savefig("damp_preview.png", dpi=150)
-                    subprocess.run("chafa damp_preview.png".split())
+                    subprocess.run(["chafa", "damp_preview.png"], check=False)
                     time.sleep(0.5)
                     if os.path.exists("damp_preview.png"):
                         os.remove("damp_preview.png")

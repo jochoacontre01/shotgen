@@ -1,7 +1,7 @@
+
 import numpy as np
 import pytest
-import pathlib
-from shotgen.sampleshot import load_overthrust, ShotRecord, _find_assets_dir
+from shotgen.sampleshot import ShotRecord, _find_assets_dir, load_overthrust
 
 overthrust_file = _find_assets_dir() / "marine_overthrust_3d.segy"
 skip_if_no_overthrust = pytest.mark.skipif(

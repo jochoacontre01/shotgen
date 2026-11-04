@@ -1,8 +1,9 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import argparse
 import subprocess
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
 from shotgen.utils import setup_matplotlib_style
 
 setup_matplotlib_style()
@@ -29,9 +30,9 @@ plt.colorbar()
 plt.savefig("img.png", dpi=150)
 if args.cli:
     plt.close(fig)
-    subprocess.run("chafa -w 9 img.png".split())
+    subprocess.run(["chafa", "-w", "9", "img.png"], check=False)
 else:
     plt.show()
 
 if not args.savefig:
-    subprocess.run("rm img.png".split())
+    subprocess.run(["rm", "img.png"], check=False)

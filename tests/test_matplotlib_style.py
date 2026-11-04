@@ -1,15 +1,13 @@
-import pytest
 import matplotlib.pyplot as plt
 import numpy as np
-
-from shotgen.utils import setup_matplotlib_style
 from shotgen.migration.kirchhoff import KirchhoffMigration
+from shotgen.utils import setup_matplotlib_style
 
 
 def test_setup_matplotlib_style_properties():
     """Verify matplotlib styling rules: size (10,5), dpi=150, no grid, external ticks."""
     setup_matplotlib_style()
-    fig, ax = plt.subplots()
+    fig, _ax = plt.subplots()
 
     # Size: (10, 5)
     assert fig.get_size_inches().tolist() == [10.0, 5.0]
