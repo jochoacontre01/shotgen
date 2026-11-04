@@ -35,8 +35,8 @@ def main():
     shots = shot_rec.run(ms=150)
     print(f"Born simulation completed via ShotRecord (engine=devito). Output shape: {shots.shape}")
 
-    # 2. Option B: Run via shotgen-gpu CLI directly using test_config.json
-    config_file = Path(__file__).resolve().parent / "test_config.json"
+    # 2. Option B: Run via shotgen-gpu CLI directly using configs/test_config.json
+    config_file = Path(__file__).resolve().parent / "configs" / "test_config.json"
     if config_file.exists():
         print(f"Launching shotgen-gpu CLI using config: {config_file}")
         run_gpu_simulation(str(config_file))
