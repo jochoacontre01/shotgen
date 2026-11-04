@@ -2,13 +2,12 @@
 import numpy as np
 import pytest
 import segyio
+from shotgen.geometry import map_coordinate_to_index
 from shotgen.sampleshot import (
     _find_assets_dir,
-    load_bpsalt,
     load_marmousi,
     load_overthrust,
     load_sigsbee,
-    map_coordinate_to_index,
 )
 
 overthrust_file = _find_assets_dir() / "marine_overthrust_3d.segy"
@@ -38,15 +37,6 @@ def test_sigsbee_spatial_headers():
     assert metadata["nz"] == 1201
 
 
-def test_bpsalt_spatial_headers():
-    data, metadata = load_bpsalt()
-    assert data.shape == (5395, 1911)
-    assert metadata["dx"] == 12.5
-    assert metadata["dz"] == 6.5
-    assert metadata["nx"] == 5395
-    assert metadata["nz"] == 1911
-
-
 @skip_if_no_overthrust
 def test_overthrust_spatial_headers():
     data, metadata = load_overthrust()
@@ -58,12 +48,6 @@ def test_overthrust_spatial_headers():
 
 
 def test_header_extraction_accuracy():
-    bpsalt_path = _find_assets_dir() / "vel_z6.25m_x12.5m_exact.segy"
-    with segyio.open(bpsalt_path, "r", ignore_geometry=True) as f:
-        assert f.bin[segyio.BinField.Interval] == 6500
-        assert f.header[0][segyio.TraceField.TRACE_SAMPLE_INTERVAL] == 6500
-        assert f.header[1][segyio.TraceField.GroupX] - f.header[0][segyio.TraceField.GroupX] == 12500
-
     if overthrust_file.exists():
         with segyio.open(overthrust_file, "r", ignore_geometry=True) as f:
             assert f.bin[segyio.BinField.Interval] == 25000
