@@ -7,6 +7,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 try:
     from tqdm import tqdm
@@ -63,6 +64,9 @@ def get_logger(name: str = "shotgen") -> logging.Logger:
     for fh in _active_file_handlers:
         if fh not in logger.handlers:
             logger.addHandler(fh)
+
+    logger.log_array = lambda name, arr, level=logging.INFO: log_array_stats(logger, name, arr, level)
+    logger.log_array_stats = logger.log_array
 
     return logger
 
@@ -237,3 +241,67 @@ def log_execution_time(logger: logging.Logger, task_name: str, level: int = logg
     finally:
         elapsed = time.perf_counter() - start_time
         logger.log(level, f"Completed task: '{task_name}' in {elapsed:.4f}s.")
+
+
+def log_array_stats(
+    logger: logging.Logger,
+    name: str,
+    arr: Any,
+    level: int = logging.INFO,
+) -> None:
+    """
+    Logs array dimensions and descriptive statistics (shape, dimensions, min, max, mean, dtype).
+    Supports NumPy arrays, PyTorch tensors, and array-like sequences.
+    """
+    if arr is None:
+        logger.log(level, "Array '%s': None", name)
+        return
+
+    try:
+        # PyTorch Tensor support without hard import at module level
+        if hasattr(arr, "detach") and hasattr(arr, "cpu"):
+            import torch
+            if isinstance(arr, torch.Tensor):
+                shape = tuple(arr.shape)
+                ndim = arr.ndim
+                dtype = str(arr.dtype)
+                if arr.numel() == 0:
+                    logger.log(level, "Array '%s' stats - Shape: %s, Dimensions: %d, Empty (size=0), Dtype: %s", name, shape, ndim, dtype)
+                    return
+                a_float = arr.float()
+                a_min = float(torch.min(a_float).item())
+                a_max = float(torch.max(a_float).item())
+                a_mean = float(torch.mean(a_float).item())
+                logger.log(
+                    level,
+                    "Array '%s' stats - Shape: %s, Dimensions: %d, Min: %.6g, Max: %.6g, Mean: %.6g, Dtype: %s",
+                    name, shape, ndim, a_min, a_max, a_mean, dtype,
+                )
+                return
+
+        import numpy as np
+        np_arr = np.asarray(arr)
+        shape = tuple(np_arr.shape)
+        ndim = np_arr.ndim
+        dtype = str(np_arr.dtype)
+
+        if np_arr.size == 0:
+            logger.log(level, "Array '%s' stats - Shape: %s, Dimensions: %d, Empty (size=0), Dtype: %s", name, shape, ndim, dtype)
+            return
+
+        if not np.issubdtype(np_arr.dtype, np.number):
+            logger.log(level, "Array '%s' stats - Shape: %s, Dimensions: %d, Dtype: %s (non-numeric)", name, shape, ndim, dtype)
+            return
+
+        a_min = float(np.nanmin(np_arr))
+        a_max = float(np.nanmax(np_arr))
+        a_mean = float(np.nanmean(np_arr))
+
+        logger.log(
+            level,
+            "Array '%s' stats - Shape: %s, Dimensions: %d, Min: %.6g, Max: %.6g, Mean: %.6g, Dtype: %s",
+            name, shape, ndim, a_min, a_max, a_mean, dtype,
+        )
+    except Exception as e:
+        logger.log(level, "Array '%s' stats - (error extracting stats: %s)", name, e)
+
