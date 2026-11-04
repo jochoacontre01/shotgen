@@ -11,7 +11,6 @@ The repository is structured as a **two-package monorepo** designed to isolate c
 ```text
 shotgen/
 ├── AGENTS.md                          # Agent instructions (this file)
-├── pyproject.toml                     # Monorepo workspace configuration
 ├── README.md                          # Repository overview
 ├── USER_GUIDE.md                      # Comprehensive architecture and user guide
 ├── packages/
@@ -35,7 +34,7 @@ shotgen/
 │           └── engine/                # Devito acoustic wave solvers & operators
 ├── tests/                             # Pytest test suite
 ├── examples/                          # Reference scripts, workflows, and configs
-├── aux/                               # Auxiliary plotting and SEG-Y utilities
+├── scripts/                           # Auxiliary plotting and SEG-Y utilities
 ├── assets/                            # Sample geological and SEG-Y input files
 └── data/                              # Generated shot records and HDF5 storage
 ```

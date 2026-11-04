@@ -24,7 +24,6 @@ shotgen/
 ├── AGENTS.md                          # Agent instructions & engineering standards
 ├── README.md                          # Repository overview
 ├── USER_GUIDE.md                      # Detailed architecture and workflow guide
-├── pyproject.toml                     # Monorepo workspace metadata
 ├── packages/
 │   ├── shotgen-core/                  # CPU / PyTorch / Deepwave / Kirchhoff / I/O
 │   │   ├── pyproject.toml
@@ -56,7 +55,7 @@ shotgen/
 │   ├── rtm_wavefield_animation.py     # Forward/adjoint RTM wavefield animation
 │   ├── run_born_simulation.py         # Subprocess GPU simulation example
 │   └── wavefield_animation.py         # Source wavefield propagation animation
-├── aux/                               # Auxiliary plotting and SEG-Y conversion scripts
+├── scripts/                           # Auxiliary plotting and SEG-Y conversion scripts
 ├── tests/                             # Pytest verification suite
 ├── assets/                            # Geological and SEG-Y velocity models
 └── data/                              # Generated shot records and migrated outputs

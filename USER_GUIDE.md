@@ -10,7 +10,6 @@ The repository is structured as a two-package monorepo to strictly isolate C-run
 
 ```text
 shotgen/
-├── pyproject.toml                     # Monorepo workspace configuration
 ├── README.md                          # Repository overview
 ├── USER_GUIDE.md                      # Comprehensive user guide
 ├── packages/
