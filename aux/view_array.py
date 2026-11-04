@@ -23,7 +23,7 @@ else:
 data = np.load(datapath)
 
 fig = plt.figure(figsize=(10, 5), dpi=150)
-plt.imshow(data.T, aspect="auto", cmap="gray")
+plt.imshow(data, aspect="auto", cmap="gray", origin="upper")
 plt.tight_layout()
 plt.colorbar()
 plt.savefig("img.png", dpi=150)
