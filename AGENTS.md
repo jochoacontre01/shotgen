@@ -100,7 +100,7 @@ pytest          # DO NOT run bare pytest — it discovers examples/ which requir
 ### 1. Logging (No Bare `print` statements)
 Use the centralized `pylogger` module rather than `print()`:
 ```python
-from shotgen.pylogger import get_logger, log_execution_time
+from shotgen.pylogger import get_logger, log_execution_time, log_array_stats
 
 logger = get_logger(__name__)
 
@@ -108,6 +108,7 @@ logger = get_logger(__name__)
 logger.info("Starting wavefield simulation...")
 logger.warning("Velocity model requires smoothing.")
 logger.error("Simulation grid out of bounds.")
+log_array_stats(logger, "velocity_model", vp)  # Logs shape, min, max, mean, dtype
 ```
 
 ### 2. Matplotlib & Headless Rendering
@@ -152,6 +153,9 @@ All migration entrypoints and workflows (including `examples/kirchhoff_migration
   - This attaches a standard `logging.FileHandler` to the logger hierarchy so all submodule operations (e.g., `shotgen.migration.kirchhoff`, `shotgen.io.segy`, `shotgen.models`) stream to both the console (via `TqdmLoggingHandler`) and the dataset log file simultaneously.
 - **Strict Prohibition of Bare `print()`**:
   - All status updates, timing metrics, and array diagnostics must pass through `logger.info()`, `logger.warning()`, or `logger.error()` instead of bare `print()` statements to ensure they are captured in the log file.
+- **Array Diagnostic Logging in Processing Workflows**:
+  - Whenever an array is involved in data processing or migration pipelines (e.g., velocity models, seismic trace gathers, source/receiver coordinates, and migrated depth images in Kirchhoff PSDM or RTM), its statistics must be recorded in the log file via `shotgen.pylogger.log_array_stats(logger, "<name>", array)` or `logger.log_array("<name>", array)`.
+  - The log entry must capture the array's shape, dimensions, min value, max value, and mean value (as well as dtype) to ensure complete numerical traceability.
 - **Read-Only / Unwritable Directory Fallback**:
   - If the dataset directory is read-only or lacks write permissions, file logging must automatically fall back to `/tmp/<dataset_name>_%Y%m%d_%H%M%S_<script_name>.log` and issue a warning, preventing permission crashes during execution on shared or protected volumes.
 
