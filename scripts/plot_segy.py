@@ -24,7 +24,11 @@ if file is None:
 
 with segyio.open(file, ignore_geometry=True) as f:
     # 1. Extract File Attributes    
-    sample_rate_ms = segyio.tools.dt(f) / 1000.0  # Convert microseconds to milliseconds
+    raw_dt = f.bin[segyio.BinField.Interval]
+    if raw_dt == 0 and len(f.header) > 0:
+        raw_dt = f.header[0][segyio.TraceField.TRACE_SAMPLE_INTERVAL]
+    dt_us = (raw_dt % 65536) if raw_dt != 0 else segyio.tools.dt(f)
+    sample_rate_ms = dt_us / 1000.0  # Convert microseconds to milliseconds
     num_traces = len(f.trace)
     num_samples = len(f.samples)
     sample_times = f.samples  # Array of sample timestamps 

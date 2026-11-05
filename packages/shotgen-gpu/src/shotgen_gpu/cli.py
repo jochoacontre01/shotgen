@@ -206,6 +206,10 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
     max_size = cfg.get("max_size")
     if max_size is not None:
         max_x, max_z = float(max_size[0]), float(max_size[1])
+        model_len_x = vel.shape[0] * dx
+        model_len_z = vel.shape[1] * dz
+        if max_z > model_len_z and max_x <= model_len_z and max_z <= model_len_x:
+            max_x, max_z = max_z, max_x
         x_start = max(0, min(int(np.round(origin[0] / dx)), vel.shape[0]))
         x_end = max(x_start, min(x_start + int(np.round(max_x / dx)), vel.shape[0]))
         z_start = max(0, min(int(np.round(origin[1] / dz)), vel.shape[1]))
