@@ -3,7 +3,7 @@ from .evaluation import (
     signal_to_noise_ratio,
     structural_similarity_index,
 )
-from .io import SegyIO
+from .io import SegyIO, convert_npy_to_segy
 from .migration import KirchhoffMigration, KirchhoffModel, load_dataset_dir
 from .models import GeoModel
 from .pylogger import (
@@ -36,6 +36,7 @@ __all__ = [
     "add_file_handler",
     "configure_devito_device",
     "contrast_to_noise_ratio",
+    "convert_npy_to_segy",
     "detect_device",
     "generate_simulation_dir_name",
     "get_code_version",

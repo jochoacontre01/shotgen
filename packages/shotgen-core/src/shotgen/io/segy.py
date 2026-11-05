@@ -1,6 +1,7 @@
 import os
 import struct
 import time
+from pathlib import Path
 
 import numpy as np
 import segyio
@@ -269,8 +270,9 @@ class SegyIO:
         spec.samples = np.arange(nz) * dz
         spec.tracecount = nx
         
+        interval_val = round(dz * 1000)
         with segyio.create(filepath, spec) as f:
-            f.bin[segyio.BinField.Interval] = int(dz * 1000)
+            f.bin[segyio.BinField.Interval] = interval_val
             f.bin[segyio.BinField.Samples] = nz
             
             for i in range(nx):
@@ -281,7 +283,96 @@ class SegyIO:
                     segyio.TraceField.CDP: i + 1,
                     segyio.TraceField.CDP_X: int(np.round(i * dx * 1000)),
                     segyio.TraceField.SourceGroupScalar: -1000,
+                    segyio.TraceField.TRACE_SAMPLE_COUNT: nz,
+                    segyio.TraceField.TRACE_SAMPLE_INTERVAL: interval_val,
                 }
+
+    @staticmethod
+    def from_npy(npy_path_or_array, output_filepath, dx, dz, order="auto", verbose=True):
+        """
+        Convert a 2D NumPy array or .npy file into a project-compliant SEGY velocity model.
+
+        Parameters
+        ----------
+        npy_path_or_array : str, Path, or np.ndarray
+            Path to the .npy file or a 2D NumPy array.
+        output_filepath : str or Path
+            Destination path for the created .segy / .sgy file.
+        dx : float
+            Horizontal grid spacing (meters). Must be > 0.
+        dz : float
+            Vertical grid spacing (meters). Must be > 0.
+        order : str, optional
+            Dimension ordering of the input array:
+            - 'auto': If array.shape[0] < array.shape[1], assumes (nz, nx) depth-first
+              and transposes to (nx, nz). Otherwise assumes (nx, nz).
+            - 'zx': Explicitly indicates input is (nz, nx), transposes to (nx, nz).
+            - 'xz': Explicitly indicates input is already (nx, nz).
+            Default is 'auto'.
+        verbose : bool, optional
+            Whether to print progress information.
+
+        Returns
+        -------
+        tuple of (np.ndarray, float, float)
+            The written model array with shape (nx, nz), dx, and dz.
+        """
+        if isinstance(npy_path_or_array, (str, Path)):
+            input_path = Path(npy_path_or_array)
+            if not input_path.exists():
+                raise FileNotFoundError(f"Input .npy file not found: {input_path}")
+            array = np.load(str(input_path))
+        elif isinstance(npy_path_or_array, np.ndarray):
+            array = np.array(npy_path_or_array, copy=False)
+        else:
+            raise TypeError(f"Expected a file path or np.ndarray, got {type(npy_path_or_array).__name__}")
+
+        if array.ndim != 2:
+            raise ValueError(f"Expected a 2D array, but got shape {array.shape} (ndim={array.ndim})")
+
+        dx = float(dx)
+        dz = float(dz)
+        if dx <= 0.0 or dz <= 0.0:
+            raise ValueError(f"Grid spacings dx and dz must be strictly positive, got dx={dx}, dz={dz}")
+
+        order_str = str(order).lower().strip()
+        if order_str == "zx":
+            model = array.T
+        elif order_str == "xz":
+            model = array
+        elif order_str == "auto":
+            if array.shape[0] < array.shape[1]:
+                model = array.T
+            else:
+                model = array
+        else:
+            raise ValueError(f"Invalid order '{order}'. Supported orders are 'auto', 'zx', or 'xz'.")
+
+        model = np.ascontiguousarray(model, dtype=np.float32)
+
+        if not np.all(np.isfinite(model)):
+            raise ValueError("Input array contains NaN or infinite values.")
+
+        output_path = Path(output_filepath)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        SegyIO.write_model(str(output_path), model, dx=dx, dz=dz)
+
+        # Verification pass
+        verified_data, read_dx, read_dz = SegyIO.read_model(str(output_path), verbose=False)
+        if verified_data.shape != model.shape or not np.isclose(read_dx, dx) or not np.isclose(read_dz, dz):
+            raise RuntimeError(
+                f"Verification failed after writing SEGY: wrote shape={model.shape}, dx={dx}, dz={dz}; "
+                f"read shape={verified_data.shape}, dx={read_dx}, dz={read_dz}"
+            )
+
+        if verbose:
+            logger.info(
+                f"Successfully converted NumPy array {array.shape} -> SEGY {model.shape} "
+                f"(dx={dx:.1f}m, dz={dz:.1f}m, units=m/s) saved to: {output_path}"
+            )
+
+        return model, dx, dz
 
     @staticmethod
     def read_model(filepath, target_dx=None, target_dz=None, verbose=True):
@@ -331,7 +422,8 @@ class SegyIO:
                 fmt = struct.unpack("<h", bin_hdr[24:26])[0]
                 endian_prefix = "<"
 
-        dz = dz_ms / 1000.0 if dz_ms > 0 else 1.0
+        dz_us = dz_ms % 65536 if dz_ms != 0 else 0
+        dz = dz_us / 1000.0 if dz_us > 0 else 1.0
         trace_stride = 240 + ns * 4
         nx = (file_size - 3600) // trace_stride
         if nx <= 0 or (file_size - 3600) % trace_stride != 0:
@@ -369,7 +461,12 @@ class SegyIO:
     def _read_model_vectorized(filepath):
         with segyio.open(filepath, "r", ignore_geometry=True, strict=False) as f:
             data = f.trace.raw[:]
-            dz = f.bin[segyio.BinField.Interval] / 1000.0
+            raw_interval = f.bin[segyio.BinField.Interval]
+            dz_us = raw_interval % 65536 if raw_interval != 0 else 0
+            if dz_us == 0 and len(f.header) > 0:
+                raw_trace_interval = f.header[0][segyio.TraceField.TRACE_SAMPLE_INTERVAL]
+                dz_us = raw_trace_interval % 65536 if raw_trace_interval != 0 else 0
+            dz = dz_us / 1000.0 if dz_us > 0 else 1.0
             nx = len(f.trace)
             if nx > 1:
                 cdp_x = f.attributes(segyio.TraceField.CDP_X)[:]
@@ -381,5 +478,13 @@ class SegyIO:
             if dz <= 0.0: dz = 1.0
 
         return data, dx, dz
+
+
+def convert_npy_to_segy(npy_path_or_array, output_filepath, dx, dz, order="auto", verbose=True):
+    """
+    Convenience wrapper around SegyIO.from_npy.
+    """
+    return SegyIO.from_npy(npy_path_or_array, output_filepath, dx=dx, dz=dz, order=order, verbose=verbose)
+
 
 

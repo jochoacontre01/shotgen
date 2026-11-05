@@ -38,7 +38,9 @@ def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None, verbos
                 print(f"[SegyIO] Reading velocity model from: {v0_path}...")
             with segyio.open(v0_path, "r", ignore_geometry=True, strict=False) as f:
                 vp = f.trace.raw[:]
-                dz = f.bin[segyio.BinField.Interval] / 1000.0
+                raw_interval = f.bin[segyio.BinField.Interval]
+                dz_us = raw_interval % 65536 if raw_interval != 0 else 0
+                dz = dz_us / 1000.0 if dz_us > 0 else 1.0
                 nx = len(f.trace)
                 dx = (f.attributes(segyio.TraceField.CDP_X)[1] - f.attributes(segyio.TraceField.CDP_X)[0]) / 1000.0 if nx > 1 else 1.0
                 if dx <= 0.0: dx = 1.0
