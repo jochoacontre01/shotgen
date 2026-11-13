@@ -452,8 +452,10 @@ class SegyIO:
         else:
             dx = 1.0
 
-        if dx <= 0.0: dx = 1.0
-        if dz <= 0.0: dz = 1.0
+        if dx <= 0.0:
+            dx = 1.0
+        if dz <= 0.0:
+            dz = 1.0
 
         return data, dx, dz
 
@@ -474,8 +476,10 @@ class SegyIO:
             else:
                 dx = 1.0
 
-            if dx <= 0.0: dx = 1.0
-            if dz <= 0.0: dz = 1.0
+            if dx <= 0.0:
+                dx = 1.0
+            if dz <= 0.0:
+                dz = 1.0
 
         return data, dx, dz
 

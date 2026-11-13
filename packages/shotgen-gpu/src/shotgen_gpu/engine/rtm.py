@@ -43,8 +43,10 @@ def load_dataset_dir_gpu(dataset_dir, require_f0=False, provided_f0=None, verbos
                 dz = dz_us / 1000.0 if dz_us > 0 else 1.0
                 nx = len(f.trace)
                 dx = (f.attributes(segyio.TraceField.CDP_X)[1] - f.attributes(segyio.TraceField.CDP_X)[0]) / 1000.0 if nx > 1 else 1.0
-                if dx <= 0.0: dx = 1.0
-                if dz <= 0.0: dz = 1.0
+                if dx <= 0.0:
+                    dx = 1.0
+                if dz <= 0.0:
+                    dz = 1.0
     else:
         raise FileNotFoundError(f"smooth_velocity.segy not found in {dataset_dir}")
 
@@ -174,15 +176,22 @@ class ReverseTimeMigration:
             n_receivers = args[1] if len(args) > 1 else kwargs.get("n_receivers")
             origin = args[2] if len(args) > 2 else kwargs.get("origin")
 
-            if len(args) > 3: spacing = args[3]
-            if len(args) > 4: nbl = args[4]
+            if len(args) > 3:
+                spacing = args[3]
+            if len(args) > 4:
+                nbl = args[4]
             t0 = args[5] if len(args) > 5 else kwargs.get("t0")
             tn = args[6] if len(args) > 6 else kwargs.get("tn")
-            if len(args) > 7: f0 = args[7]
-            if len(args) > 8: smooth_sigma = args[8]
-            if len(args) > 9: dtype = args[9]
-            if len(args) > 10: space_order = args[10]
-            if len(args) > 11: time_order = args[11]
+            if len(args) > 7:
+                f0 = args[7]
+            if len(args) > 8:
+                smooth_sigma = args[8]
+            if len(args) > 9:
+                dtype = args[9]
+            if len(args) > 10:
+                space_order = args[10]
+            if len(args) > 11:
+                time_order = args[11]
 
         if dataset_dir is not None:
             self.v0 = vp / 1000.0

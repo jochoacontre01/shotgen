@@ -11,7 +11,8 @@ import warnings
 def _disable_torch_import():
     """Prevent PyTorch / libgomp symbol interposition in Devito GPU process memory."""
     if "torch" not in sys.modules:
-        class DummyTensor: pass
+        class DummyTensor:
+            pass
         mock_torch = types.ModuleType("torch")
         mock_torch.Tensor = DummyTensor
         mock_torch.__spec__ = importlib.machinery.ModuleSpec("torch", None)

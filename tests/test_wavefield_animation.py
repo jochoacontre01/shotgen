@@ -5,20 +5,18 @@ from unittest.mock import patch
 
 import numpy as np
 
-EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
-if str(EXAMPLES_DIR) not in sys.path:
-    sys.path.insert(0, str(EXAMPLES_DIR))
-
-from wavefield_animation import (
-    main,
-)
-
 
 def test_wavefield_animation_end_to_end(tmp_path):
     """
     Smoke test running wavefield simulation and animation generation on a
     small synthetic velocity model, testing both MP4 and NPZ output generation.
     """
+    examples_dir = Path(__file__).resolve().parent.parent / "examples"
+    if str(examples_dir) not in sys.path:
+        sys.path.insert(0, str(examples_dir))
+
+    from wavefield_animation import main
+
     vel = 2000.0 * np.ones((40, 30), dtype=np.float32)
     vel_path = tmp_path / "synthetic_vel.npy"
     np.save(vel_path, vel)
