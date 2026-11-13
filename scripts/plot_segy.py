@@ -1,7 +1,13 @@
 import argparse
 import os
 import subprocess
+import sys
 import time
+
+import matplotlib
+
+if "--cli" in sys.argv:
+    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import segyio
@@ -58,7 +64,7 @@ extent = (
 )
 # norm = TwoSlopeNorm(0.0, np.amin(traces), np.amax(traces))
 fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
-im = ax.imshow(traces.T, cmap="seismic", aspect="auto", extent=extent)
+im = ax.imshow(traces.T, cmap="grey", aspect="auto", extent=extent)
 ax.set_xlabel("Traces")
 ax.set_ylabel("TWT (ms)")
 plt.colorbar(im, ax=ax)

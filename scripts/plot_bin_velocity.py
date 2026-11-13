@@ -1,5 +1,11 @@
 import argparse
 import subprocess
+import sys
+
+import matplotlib
+
+if "-c" in sys.argv or "--cli" in sys.argv:
+    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,7 +30,7 @@ def main():
     extent = (0, nx * dx, nz * dz, 0)
 
     fig = plt.figure(figsize=(10, 5), dpi=150)
-    im = plt.imshow(data.T, extent=extent, cmap="turbo", aspect="auto")
+    im = plt.imshow(data.T, extent=extent, cmap="grey", aspect="auto")
     plt.colorbar(im, label="Velocity (m/s)")
     plt.xlabel("X (m)")
     plt.ylabel("Depth Z (m)")

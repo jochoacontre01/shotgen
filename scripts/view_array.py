@@ -1,6 +1,12 @@
 import argparse
 import subprocess
+import sys
 from pathlib import Path
+
+import matplotlib
+
+if "--cli" in sys.argv:
+    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
