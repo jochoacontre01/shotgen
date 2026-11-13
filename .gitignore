@@ -13,3 +13,4 @@ img.png
 *.npy
 *.segy
 *.sgy
+*tgs*
