@@ -23,7 +23,7 @@
         0.0
       ],
     "group_offset": 12.0,
-    "shot_offset": 12.0,
+    "shot_offset": 25.0,
     "gather": "common shot",
     "smooth": 15,
     "snr": null,
