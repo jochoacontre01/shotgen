@@ -5,7 +5,7 @@
     "float_type": "float32",
     "dx": 12.5,
     "dz": 4.0,
-    "max_size": [85000.0, 1000.0],
+    "max_size": [85000.0, 10000.0],
     "n_sources": 23.0,
     "n_receivers": 48.0,
     "ms": 5000.0,
