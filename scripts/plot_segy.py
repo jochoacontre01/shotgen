@@ -60,7 +60,7 @@ print("dx (m): ", dx)
 print("\n")
 
 extent = (
-    0, traces.shape[0], num_samples*sample_rate_ms, 0
+    0, traces.shape[0]*dx if dx is not None else traces.shape[0], num_samples*sample_rate_ms, 0
 )
 # norm = TwoSlopeNorm(0.0, np.amin(traces), np.amax(traces))
 fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
