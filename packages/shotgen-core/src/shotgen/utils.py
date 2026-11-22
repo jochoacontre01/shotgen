@@ -118,6 +118,7 @@ def setup_matplotlib_style():
     - external ticks only on all four spines
     """
     import matplotlib.pyplot as plt
+    import scienceplots
 
     try:
         plt.style.use(["science", "no-latex"])
