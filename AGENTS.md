@@ -158,6 +158,27 @@ All migration entrypoints and workflows (including `examples/kirchhoff_migration
 - **Read-Only / Unwritable Directory Fallback**:
   - If the dataset directory is read-only or lacks write permissions, file logging must automatically fall back to `/tmp/<dataset_name>_%Y%m%d_%H%M%S_<script_name>.log` and issue a warning, preventing permission crashes during execution on shared or protected volumes.
 
+### 6. Compact Dataset & Simulation Naming Convention (MAX_PATH <= 260 Safe)
+All simulation tasks — including `shotgen-gpu` (Devito/OpenACC), `shotgen-core` (CPU/PyLops/PyTorch), `examples/wavefield_animation.py`, and other simulation workflows — must generate compact, unique dataset directory names via `shotgen.utils.generate_simulation_dir_name` / `resolve_simulation_output_dir` so that full absolute paths (including nested logs and artifacts on Windows) **never exceed 260 characters**:
+- **Directory Name Template** (hard cap `<= 64` characters):
+  ```text
+  <model>_<gather>_<nsrc>s_<nrec>r_<f0>hz_<hash8>
+  ```
+  - `<model>` (max 18 chars): bare-minimum lowercase slug identifying the simulated dataset/model (canonicalized via `shotgen.utils.canonicalize_model_name`, e.g., `marmousi`, `bpsalt`, `sigsbee2a`, `overthrust2d`, `ca30009_moho_disc`, `ca30009_moho`, `fpb`, `r3405`, `sin_fault`, `sinusoidal`, `wavy1`, `wavy_inc1`, `fault1`, `2layer`, `3layer`, `graben`, or `synth` when omitted).
+  - `<gather>`: compact gather token (`cs` for common shot, `cmp` for common midpoint, or <= 6-char sanitized token).
+  - `<nsrc>s_<nrec>r`: source and receiver counts (e.g., `23s_48r`).
+  - `<f0>hz`: dominant frequency in Hz (e.g., `10hz`, `12_5hz`).
+  - `<hash8>`: 8-character lowercase SHA-256 hex digest computed deterministically from all canonical simulation parameters (`model`, `gather`, `nx`, `nz`, `dx`, `dz`, `n_sources`, `n_receivers`, `ms`, `fs_ms`, `f0`, `group_offset`, `shot_offset`, `snr`), guaranteeing uniqueness without bloating paths.
+- **Examples**:
+  - `data/marmousi_cs_23s_48r_20hz_a1b2c3d4`
+  - `data/bpsalt_cs_100s_48r_15hz_9f8e7d6c`
+  - `data/simulations/ca30009_moho_disc_cs_23s_48r_10hz_4c2a1f9e`
+- **Artifacts Inside Dataset Directories** (keep filenames `<= 48` chars):
+  - Standard outputs: `traces.segy`, `velocity_model.segy`, `smooth_velocity.segy`, `metadata.h5`, `simulation_results.h5`, `<config>.json`.
+  - Run logs & migrated outputs: `%Y%m%d_%H%M%S_<script_name>.log`, `%Y%m%d_%H%M%S_<artifact>.npy`.
+  - Animations: `source_<idx>.mp4`, `wavefield_arrays/source_<idx>.npz`.
+  - Standalone migrated files in `data/migrated/`: `<dataset_dir>_<method>.npy` (e.g., `<dir>_kirchhoff.npy`).
+
 ---
 
 ## 5. Data Management & Safety

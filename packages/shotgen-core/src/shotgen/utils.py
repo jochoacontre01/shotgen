@@ -1,4 +1,10 @@
+import hashlib
+import json
+import re
 from pathlib import Path
+
+MAX_SIM_DIR_NAME_LEN = 64
+MAX_MODEL_SLUG_LEN = 18
 
 
 def _format_num_for_filename(val) -> str:
@@ -12,12 +18,10 @@ def _format_num_for_filename(val) -> str:
     if val is None:
         return "None"
     if isinstance(val, (int, float)):
-        # If float equals integer value, return integer representation
         if float(val).is_integer():
             return str(int(val))
         s = str(val)
         return s.replace(".", "_")
-    # For strings or other types
     s = str(val).strip()
     try:
         f = float(s)
@@ -28,63 +32,158 @@ def _format_num_for_filename(val) -> str:
         return s.replace(".", "_")
 
 
-def _extract_model_name(cfg: dict) -> str:
+def _raw_model_stem(cfg: dict) -> str:
     vel_spec = cfg.get("velocity_model") or cfg.get("vel_file") or cfg.get("vel_model") or cfg.get("model")
     if vel_spec is None:
         return "synthetic"
     if isinstance(vel_spec, (str, Path)):
         p = Path(str(vel_spec).strip())
         name = p.stem.lower()
-        clean = "".join(c if c.isalnum() or c == "_" else "_" for c in name)
-        clean = clean.strip("_")
+        clean = re.sub(r"[^a-z0-9]+", "_", name).strip("_")
         return clean if clean else "synthetic"
     return "synthetic"
 
 
-def generate_simulation_dir_name(cfg: dict, base_dir: str = "data") -> Path:
+def canonicalize_model_name(raw_name: str | Path | None) -> str:
     """
-    Generates a unique simulation output directory name based on parameters from a JSON/YAML config.
-
-    Format order:
-    model, gather, nx, nz, dx, dz, n_sources, n_receivers, ms, fs, f0, group_offset, shot_offset, snr
-
-    Example:
-    data/marmousi_commonshot_100nx_100nz_10dx_10dz_2src_10rec_300ms_fs_6ms_25Hz_1groupoffset_1shotoffset_noiseless
+    Compress a velocity model name or file path into a short, human-readable slug
+    (<= MAX_MODEL_SLUG_LEN characters) while preserving dataset identity.
     """
-    model = _extract_model_name(cfg)
-    raw_gather = str(cfg.get("gather", "common shot"))
-    gather_clean = raw_gather.replace(" ", "")
+    if raw_name is None:
+        return "synth"
+    stem = Path(str(raw_name).strip()).stem.lower()
+    clean = re.sub(r"[^a-z0-9]+", "_", stem).strip("_")
+    if not clean or clean == "synthetic":
+        return "synth"
 
-    nx = _format_num_for_filename(cfg.get("nx", 100))
-    nz = _format_num_for_filename(cfg.get("nz", 100))
-    dx = _format_num_for_filename(cfg.get("dx", 10.0))
-    dz = _format_num_for_filename(cfg.get("dz", 10.0))
-    n_sources = _format_num_for_filename(cfg.get("n_sources", 2))
-    n_receivers = _format_num_for_filename(cfg.get("n_receivers", 10))
-    ms = _format_num_for_filename(cfg.get("ms", cfg.get("ntime", 300.0)))
+    # Known benchmark & project velocity models
+    if re.search(r"ca_?30009", clean):
+        if "moho" in clean and "disc" in clean:
+            return "ca30009_moho_disc"
+        if "moho" in clean:
+            return "ca30009_moho"
+        return "ca30009"
+    if "marmousi" in clean:
+        return "marmousi"
+    if "bpsalt" in clean or "bp_salt" in clean or "bp2004" in clean or ("vel_z6" in clean and "exact" in clean):
+        return "bpsalt"
+    if "sigsbee2a" in clean:
+        return "sigsbee2a"
+    if "sigsbee" in clean:
+        return "sigsbee"
+    if "overthrust" in clean:
+        if "2d" in clean:
+            return "overthrust2d"
+        if "3d" in clean:
+            return "overthrust3d"
+        return "overthrust"
+    if "r3405" in clean:
+        return "r3405"
+    if clean in ("fpb", "fbp"):
+        return "fpb"
+    if "simple_sinusoidal_fault" in clean:
+        return "sin_fault"
+    if "simple_sinusoidal" in clean:
+        return "sinusoidal"
 
+    m = re.match(r"^wavy_inclined_layer_(\d+)$", clean)
+    if m:
+        return f"wavy_inc{m.group(1)}"
+    m = re.match(r"^wavy_layer_(\d+)$", clean)
+    if m:
+        return f"wavy{m.group(1)}"
+    m = re.match(r"^faulted_layer_(\d+)$", clean)
+    if m:
+        return f"fault{m.group(1)}"
+    if clean in ("three_layer", "three_layers"):
+        return "3layer"
+    if clean in ("two_layer", "two_layers"):
+        return "2layer"
+    if "complex_graben" in clean:
+        return "graben"
+
+    # Strip boilerplate prefixes/suffixes for arbitrary custom models
+    slug = re.sub(r"^(vp_|vel_)", "", clean)
+    slug = re.sub(r"(_stratigraphy_meters|_stratigraphy|_migvel|_meters|_model|_vel)$", "", slug)
+    slug = slug.strip("_") or clean
+    if len(slug) > MAX_MODEL_SLUG_LEN:
+        slug = slug[:MAX_MODEL_SLUG_LEN].rstrip("_")
+    return slug or "synth"
+
+
+def _extract_model_name(cfg: dict) -> str:
+    vel_spec = cfg.get("velocity_model") or cfg.get("vel_file") or cfg.get("vel_model") or cfg.get("model")
+    if vel_spec is None or not isinstance(vel_spec, (str, Path)):
+        return "synth"
+    return canonicalize_model_name(vel_spec)
+
+
+def _format_gather_token(raw_gather: str) -> str:
+    clean = re.sub(r"[^a-z0-9]+", "", str(raw_gather).lower())
+    if clean in ("commonshot", "cs"):
+        return "cs"
+    if clean in ("commonmidpoint", "cmp"):
+        return "cmp"
+    return clean[:6] if clean else "cs"
+
+
+def _compute_sim_hash(cfg: dict) -> str:
     fs_val = cfg.get("fs_ms")
     if fs_val is None:
         fs_val = cfg.get("fs")
-    if fs_val is not None:
-        fs_token = f"fs_{_format_num_for_filename(fs_val)}ms"
-    else:
-        fs_token = "fs_native"
-
-    f0 = _format_num_for_filename(cfg.get("f0", 25.0))
-    group_offset = _format_num_for_filename(cfg.get("group_offset", 1.0))
-    shot_offset = _format_num_for_filename(cfg.get("shot_offset", 1.0))
+    fs_norm = _format_num_for_filename(fs_val) if fs_val is not None else "native"
 
     snr_val = cfg.get("snr")
     if snr_val is None or (isinstance(snr_val, str) and snr_val.strip().lower() in ("none", "null")):
-        snr_token = "noiseless"
+        snr_norm = "none"
     else:
-        snr_token = f"{_format_num_for_filename(snr_val)}snr"
+        snr_norm = _format_num_for_filename(snr_val)
 
-    dir_name = (
-        f"{model}_{gather_clean}_{nx}nx_{nz}nz_{dx}dx_{dz}dz_{n_sources}src_{n_receivers}rec_"
-        f"{ms}ms_{fs_token}_{f0}Hz_{group_offset}groupoffset_{shot_offset}shotoffset_{snr_token}"
-    )
+    payload = {
+        "model": _raw_model_stem(cfg),
+        "gather": _format_gather_token(cfg.get("gather", "common shot")),
+        "nx": _format_num_for_filename(cfg.get("nx", 100)),
+        "nz": _format_num_for_filename(cfg.get("nz", 100)),
+        "dx": _format_num_for_filename(cfg.get("dx", 10.0)),
+        "dz": _format_num_for_filename(cfg.get("dz", 10.0)),
+        "n_sources": _format_num_for_filename(cfg.get("n_sources", 2)),
+        "n_receivers": _format_num_for_filename(cfg.get("n_receivers", 10)),
+        "ms": _format_num_for_filename(cfg.get("ms", cfg.get("ntime", 300.0))),
+        "fs_ms": fs_norm,
+        "f0": _format_num_for_filename(cfg.get("f0", 25.0)),
+        "group_offset": _format_num_for_filename(cfg.get("group_offset", 1.0)),
+        "shot_offset": _format_num_for_filename(cfg.get("shot_offset", 1.0)),
+        "snr": snr_norm,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
+
+
+def generate_simulation_dir_name(cfg: dict, base_dir: str | None = "data") -> Path:
+    """
+    Generates a compact, deterministic, unique simulation output directory name
+    guaranteed to stay <= MAX_SIM_DIR_NAME_LEN (64) characters so full OS paths
+    remain well under the 260-character Windows MAX_PATH limit.
+
+    Format:
+        <model>_<gather>_<nsrc>s_<nrec>r_<f0>hz_<hash8>
+
+    Example:
+        data/marmousi_cs_2s_10r_25hz_a1b2c3d4
+    """
+    model = _extract_model_name(cfg)
+    gather = _format_gather_token(cfg.get("gather", "common shot"))
+    n_sources = _format_num_for_filename(cfg.get("n_sources", 2))
+    n_receivers = _format_num_for_filename(cfg.get("n_receivers", 10))
+    f0 = _format_num_for_filename(cfg.get("f0", 25.0))
+    hash8 = _compute_sim_hash(cfg)
+
+    suffix = f"{gather}_{n_sources}s_{n_receivers}r_{f0}hz_{hash8}"
+    max_model_len = max(4, MAX_SIM_DIR_NAME_LEN - len(suffix) - 1)
+    if len(model) > max_model_len:
+        model = model[:max_model_len].rstrip("_") or "sim"
+
+    dir_name = f"{model}_{suffix}"
 
     if base_dir:
         return Path(base_dir) / dir_name
@@ -118,7 +217,6 @@ def setup_matplotlib_style():
     - external ticks only on all four spines
     """
     import matplotlib.pyplot as plt
-    import scienceplots
 
     try:
         plt.style.use(["science", "no-latex"])

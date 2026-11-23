@@ -162,7 +162,7 @@ def filter_2d(data, x, y):
 
 
 # ? Load shot record
-shot = LoadShotRecord(pathlib.Path(__file__).resolve().parents[1] / "data/commonshot-shot_750nx_275nz_48rec_6src_250hz_10goffset_45soffset_sigsbee_dataset")
+shot = LoadShotRecord(pathlib.Path(__file__).resolve().parents[1] / "data/sigsbee_cs_6s_48r_250hz_example")
 
 shots = shot.shots
 nshots = shot.nshots
