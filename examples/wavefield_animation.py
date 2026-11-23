@@ -37,6 +37,7 @@ from devito import ConditionalDimension, Eq, Function, Operator, TimeFunction
 from examples.seismic import AcquisitionGeometry, Model
 from examples.seismic.acoustic.operators import iso_stencil
 from shotgen.cli import _load_velocity_model_core
+from shotgen.io.video import make_transparent_diverging_cmap
 from shotgen.pylogger import get_logger, setup_file_logging
 from shotgen.sampleshot import ShotRecord
 from shotgen.utils import generate_simulation_dir_name, setup_matplotlib_style
@@ -333,14 +334,15 @@ def create_animation(
     vmax_f = max(vmax_ref * 0.7, 1e-4)
 
     norm = mcolors.TwoSlopeNorm(vmin=-vmax_f, vcenter=0.0, vmax=vmax_f)
+    wf_cmap = make_transparent_diverging_cmap(CMAP_WAVEFIELD)
     frame_0 = wavefield[0]
     im_wf = ax.imshow(
         frame_0.T,
         extent=extent,
-        cmap=CMAP_WAVEFIELD,
+        cmap=wf_cmap,
         norm=norm,
         aspect="auto",
-        alpha=0.85,
+        alpha=1.0,
         origin="upper",
     )
 

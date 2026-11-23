@@ -84,3 +84,20 @@ def test_wavefield_animation_end_to_end(tmp_path):
     assert "source_idx" in data
     assert data["source_idx"] == 0
     assert data["wavefield"].shape[1:] == (40, 30)
+
+
+def test_make_transparent_diverging_cmap():
+    """
+    Verify that make_transparent_diverging_cmap produces transparent center
+    values (zero wavefield) and high opacity at positive/negative extremes.
+    """
+    from shotgen.io.video import make_transparent_diverging_cmap
+
+    cmap = make_transparent_diverging_cmap("seismic", max_alpha=0.92)
+    center_rgba = cmap(0.5)
+    low_rgba = cmap(0.0)
+    high_rgba = cmap(1.0)
+
+    assert center_rgba[3] < 0.05
+    assert np.isclose(low_rgba[3], 0.92, atol=1e-2)
+    assert np.isclose(high_rgba[3], 0.92, atol=1e-2)

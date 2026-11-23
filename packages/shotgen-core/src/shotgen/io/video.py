@@ -1,9 +1,34 @@
+import gc
 import os
 
 import cmocean
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib import animation
+
+from shotgen.pylogger import get_logger
+
+logger = get_logger(__name__)
+
+
+def make_transparent_diverging_cmap(
+    base_cmap,
+    max_alpha: float = 0.92,
+    alpha_gamma: float = 0.65,
+    n_colors: int = 256,
+) -> mcolors.ListedColormap:
+    """
+    Wrap a diverging colormap so zero-amplitude values (center) are transparent
+    and opacity smoothly ramps up with |amplitude|, keeping the underlying
+    velocity model unobstructed wherever wavefield energy is near zero.
+    """
+    cmap_obj = plt.get_cmap(base_cmap) if isinstance(base_cmap, str) else base_cmap
+    rgba = cmap_obj(np.linspace(0.0, 1.0, n_colors))
+    dist = np.abs(np.linspace(-1.0, 1.0, n_colors))
+    rgba[:, 3] = np.clip(max_alpha * np.power(dist, alpha_gamma), 0.0, 1.0)
+    base_name = getattr(cmap_obj, "name", "diverging")
+    return mcolors.ListedColormap(rgba, name=f"{base_name}_transparent")
 
 
 def generate_video(shot_record, output_path=None, source_idx=0):
@@ -53,14 +78,23 @@ def generate_video(shot_record, output_path=None, source_idx=0):
         shot_record.origin[-1]
     )
 
-    ax.imshow(shot_record.v0.T, extent=extent, cmap='gray', alpha=0.3, aspect='auto')
+    ax.imshow(shot_record.v0.T, extent=extent, cmap="gray", alpha=0.3, aspect="auto", origin="upper")
 
     frame_0 = us_src_clean[0]
     vmin = min(frame_0.min(), -1e-10)
     vmax = max(frame_0.max(), 1e-10)
     norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
 
-    im_fg = ax.imshow(frame_0.T, extent=extent, cmap=cmocean.cm.balance, norm=norm, alpha=1.0, aspect='auto')
+    wf_cmap = make_transparent_diverging_cmap(cmocean.cm.balance)
+    im_fg = ax.imshow(
+        frame_0.T,
+        extent=extent,
+        cmap=wf_cmap,
+        norm=norm,
+        alpha=1.0,
+        aspect="auto",
+        origin="upper",
+    )
 
     ax.set_title(f"Wavefield Propagation (Source {source_idx + 1})")
     ax.set_xlabel("x [m]")
@@ -80,9 +114,8 @@ def generate_video(shot_record, output_path=None, source_idx=0):
 
     try:
         anim.save(output_path, writer=writer)
-        print(f"Video successfully saved to {output_path}")
+        logger.info("Video successfully saved to %s", output_path)
     finally:
         plt.close(fig)
         fig.clear()
-        import gc
         gc.collect()

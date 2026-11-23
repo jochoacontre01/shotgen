@@ -44,6 +44,7 @@ except ImportError:
 from devito import ConditionalDimension, Eq, Function, Operator, TimeFunction, solve
 from examples.seismic import PointSource
 from examples.seismic.acoustic.operators import iso_stencil
+from shotgen.io.video import make_transparent_diverging_cmap
 from shotgen.pylogger import get_logger, setup_file_logging
 from shotgen.utils import setup_matplotlib_style
 from shotgen_gpu.engine.rtm import ReverseTimeMigration
@@ -390,20 +391,24 @@ def create_rtm_dissection_animation(
     )
     ax_v.legend(loc="upper right", fontsize=8)
 
+    # Transparent-center diverging colormaps so background velocity shows clearly
+    cmap_wf = make_transparent_diverging_cmap(CMAP_WAVEFIELD)
+    cmap_img = make_transparent_diverging_cmap(CMAP_IMAGE)
+
     # Initial image displays
-    im_u = ax_u.imshow(u_seq[0].T, extent=extent, cmap=CMAP_WAVEFIELD, norm=norm_u, aspect="auto", alpha=0.85)
+    im_u = ax_u.imshow(u_seq[0].T, extent=extent, cmap=cmap_wf, norm=norm_u, aspect="auto", alpha=1.0)
     ax_u.set_title("Forward Wavefield: ∑ u_i(x, z, t)")
     fig.colorbar(im_u, ax=ax_u, shrink=0.7, label="u amp")
 
-    im_v = ax_v.imshow(v_seq[0].T, extent=extent, cmap=CMAP_WAVEFIELD, norm=norm_v, aspect="auto", alpha=0.85)
+    im_v = ax_v.imshow(v_seq[0].T, extent=extent, cmap=cmap_wf, norm=norm_v, aspect="auto", alpha=1.0)
     ax_v.set_title("Backward Residual Wavefield: ∑ v_i(x, z, t)")
     fig.colorbar(im_v, ax=ax_v, shrink=0.7, label="v amp")
 
-    im_prod = ax_prod.imshow(prod_seq[0].T, extent=extent, cmap=CMAP_IMAGE, norm=norm_prod, aspect="auto")
+    im_prod = ax_prod.imshow(prod_seq[0].T, extent=extent, cmap=cmap_img, norm=norm_prod, aspect="auto", alpha=1.0)
     ax_prod.set_title("Instantaneous Correlation: ∑ u_i · v_i")
     fig.colorbar(im_prod, ax=ax_prod, shrink=0.7, label="u·v")
 
-    im_img = ax_img.imshow(cum_image[0].T, extent=extent, cmap=CMAP_IMAGE, norm=norm_cum, aspect="auto")
+    im_img = ax_img.imshow(cum_image[0].T, extent=extent, cmap=cmap_img, norm=norm_cum, aspect="auto", alpha=1.0)
     ax_img.set_title("Cumulative Stacked RTM Image: ∑∑ u_i · v_i")
     fig.colorbar(im_img, ax=ax_img, shrink=0.7, label="Image amp")
 
