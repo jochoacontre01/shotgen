@@ -1,3 +1,4 @@
+import itertools
 import os
 
 import matplotlib.pyplot as plt
@@ -211,7 +212,7 @@ def discretize_velocity_model(
         bounds = [0] + unique_iz + [nz]
         col_out = np.empty(nz, dtype=float)
 
-        for a, b in zip(bounds[:-1], bounds[1:]):
+        for a, b in itertools.pairwise(bounds):
             col_out[a:b] = stat_fn(col_bg[a:b])
 
         for k, (iz, w) in enumerate(zip(unique_iz, unique_w)):
