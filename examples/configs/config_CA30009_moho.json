@@ -1,6 +1,6 @@
 {
     "task": "simulation",
-    "velocity_model": "CA-3000991-GOA_PSDM_Vel_RL_IL10249_XL4923_to_IL7796_XL7908_moho.segy",
+    "velocity_model": "CA-3000991-GOA_PSDM_Vel_RL_IL10249_XL4923_to_IL7796_XL7908_moho_discretized.segy",
     "meters_per_cell": 1.0,
     "float_type": "float32",
     "dx": 15.0,
