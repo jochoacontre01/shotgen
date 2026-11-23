@@ -101,7 +101,7 @@ def test_full_config_parsing_gpu(tmp_path):
 
 
 def test_dir_name_generation_with_snr():
-    """Verify that generate_simulation_dir_name includes snr correctly."""
+    """Verify that generate_simulation_dir_name hashes snr into a unique compact name."""
     cfg = {
         "gather": "common shot",
         "nx": 100,
@@ -116,5 +116,7 @@ def test_dir_name_generation_with_snr():
         "shot_offset": 50.0,
         "snr": 0.1,
     }
-    dir_name = generate_simulation_dir_name(cfg, base_dir="data")
-    assert "0_1snr" in str(dir_name)
+    dir_name_noisy = generate_simulation_dir_name(cfg, base_dir="data")
+    dir_name_clean = generate_simulation_dir_name(dict(cfg, snr=None), base_dir="data")
+    assert dir_name_noisy != dir_name_clean
+    assert len(dir_name_noisy.name) <= 64

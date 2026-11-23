@@ -1,7 +1,13 @@
 import json
+import re
 
 from shotgen.cli import main as core_main
-from shotgen.utils import generate_simulation_dir_name, resolve_simulation_output_dir
+from shotgen.utils import (
+    MAX_SIM_DIR_NAME_LEN,
+    canonicalize_model_name,
+    generate_simulation_dir_name,
+    resolve_simulation_output_dir,
+)
 
 
 def test_naming_with_model_and_fs_ms():
@@ -22,11 +28,14 @@ def test_naming_with_model_and_fs_ms():
         "snr": None,
     }
     dir_name = generate_simulation_dir_name(cfg, base_dir="data")
-    expected = (
-        "data/marmousi_commonshot_120nx_80nz_12_5dx_10dz_3src_24rec_"
-        "500ms_fs_6ms_20Hz_5groupoffset_10shotoffset_noiseless"
-    )
-    assert str(dir_name) == expected
+    assert dir_name.parent.name == "data"
+    assert re.match(r"^marmousi_cs_3s_24r_20hz_[0-9a-f]{8}$", dir_name.name)
+    assert len(dir_name.name) <= MAX_SIM_DIR_NAME_LEN
+
+    # Deterministic across identical configs and distinct when fs_ms changes
+    assert generate_simulation_dir_name(cfg, base_dir="data") == dir_name
+    cfg_diff_fs = dict(cfg, fs_ms=2.0)
+    assert generate_simulation_dir_name(cfg_diff_fs, base_dir="data") != dir_name
 
 
 def test_naming_native_fs_and_filepath_model_and_snr():
@@ -44,29 +53,68 @@ def test_naming_native_fs_and_filepath_model_and_snr():
         "snr": 15.5,
     }
     dir_name = generate_simulation_dir_name(cfg, base_dir=None)
-    expected = (
-        "complex_graben_cmp_50nx_50nz_5dx_5dz_1src_10rec_"
-        "100ms_fs_native_30Hz_1groupoffset_1shotoffset_15_5snr"
-    )
-    assert str(dir_name) == expected
+    assert re.match(r"^graben_cmp_1s_10r_30hz_[0-9a-f]{8}$", dir_name.name)
+    assert len(dir_name.name) <= MAX_SIM_DIR_NAME_LEN
+
+    # Changing SNR must change the hash
+    cfg_noiseless = dict(cfg, snr=None)
+    assert generate_simulation_dir_name(cfg_noiseless, base_dir=None) != dir_name
 
 
-def test_naming_fallback_to_synthetic_when_model_missing():
+def test_naming_fallback_to_synth_when_model_missing():
     cfg = {
         "nx": 30,
         "nz": 30,
     }
     dir_name = generate_simulation_dir_name(cfg, base_dir=None)
-    assert str(dir_name).startswith("synthetic_")
+    assert str(dir_name).startswith("synth_")
+    assert len(dir_name.name) <= MAX_SIM_DIR_NAME_LEN
+
+
+def test_naming_long_model_stays_under_max_path():
+    cfg = {
+        "velocity_model": "CA-3000991-GOA_PSDM_Vel_RL_IL10249_XL4923_to_IL7796_XL7908_moho_discretized.segy",
+        "gather": "common shot",
+        "nx": 2986,
+        "nz": 1750,
+        "dx": 15.0,
+        "dz": 20.0,
+        "n_sources": 23,
+        "n_receivers": 48,
+        "ms": 12000.0,
+        "fs_ms": 2.0,
+        "f0": 10.0,
+        "group_offset": 12.5,
+        "shot_offset": 25.0,
+        "snr": None,
+    }
+    dir_name = generate_simulation_dir_name(cfg, base_dir="data/simulations")
+    assert re.match(r"^ca30009_moho_disc_cs_23s_48r_10hz_[0-9a-f]{8}$", dir_name.name)
+    assert len(dir_name.name) <= MAX_SIM_DIR_NAME_LEN
+    # Verify worst-case Windows path with a 120-char repo root and 45-char log file stays < 260
+    worst_case_len = 120 + len(str(dir_name)) + 1 + 45
+    assert worst_case_len < 260
+
+
+def test_canonicalize_model_name():
+    assert canonicalize_model_name("vp_marmousi-ii.segy") == "marmousi"
+    assert canonicalize_model_name("bpsalt") == "bpsalt"
+    assert canonicalize_model_name("sigsbee2a_stratigraphy_meters.sgy") == "sigsbee2a"
+    assert canonicalize_model_name("overthrust_2d.segy") == "overthrust2d"
+    assert canonicalize_model_name("wavy_inclined_layer_2.segy") == "wavy_inc2"
+    assert canonicalize_model_name("simple_sinusoidal_fault.segy") == "sin_fault"
+    assert canonicalize_model_name("two-layer.segy") == "2layer"
+    assert canonicalize_model_name("three-layer.segy") == "3layer"
+    assert len(canonicalize_model_name("a_very_long_arbitrary_custom_geological_velocity_model_name.segy")) <= 18
 
 
 def test_resolve_simulation_output_dir():
     cfg = {"velocity_model": "marmousi", "nx": 10, "nz": 10, "fs_ms": 4.0}
-    
+
     # 1. Omitted output_dir -> uses data/<generated>
     resolved_default = resolve_simulation_output_dir(cfg)
     assert str(resolved_default).startswith("data/marmousi_")
-    assert "fs_4ms" in str(resolved_default)
+    assert len(resolved_default.name) <= MAX_SIM_DIR_NAME_LEN
 
     # 2. Parent directory with trailing slash -> nests inside it
     cfg_parent = dict(cfg, output_dir="custom_sims/")
@@ -113,10 +161,9 @@ def test_cli_execution_with_auto_generated_name_and_config_copy(tmp_path, monkey
     assert len(subdirs) == 1
     dataset_dir = subdirs[0]
 
-    # Verify folder name has the comprehensive tokens
-    assert dataset_dir.name.startswith("simple_sinusoidal_")
-    assert "fs_4ms" in dataset_dir.name
-    assert "noiseless" in dataset_dir.name
+    # Verify folder name follows compact naming convention
+    assert re.match(r"^sinusoidal_cmp_1s_4r_20hz_[0-9a-f]{8}$", dataset_dir.name)
+    assert len(dataset_dir.name) <= MAX_SIM_DIR_NAME_LEN
 
     # Verify dataset files and copied config exist inside
     assert (dataset_dir / "traces.segy").exists()
