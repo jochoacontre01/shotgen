@@ -194,7 +194,7 @@ def load_config_dict(config_path: Path) -> dict[str, Any]:
         else:
             data = json.load(f)
     if not isinstance(data, dict):
-        raise ValueError(f"Configuration root must be a JSON/YAML object, got {type(data).__name__}.")
+        raise TypeError(f"Configuration root must be a JSON/YAML object, got {type(data).__name__}.")
     return data
 
 
@@ -408,7 +408,7 @@ def analyze_config(config_path: Path, fast: bool = False) -> ConfigReport:
     max_reach_x = max(geom["last_src_x"], geom["latest_rec_x"])
     margin_x_m = model_max_x - max_reach_x
     overflow_x_m = max(0.0, -margin_x_m)
-    overflow_x_cells = max(0, int(math.ceil((max_reach_x - origin[0]) / dx)) - nx) if dx > 0 else 0
+    overflow_x_cells = max(0, math.ceil((max_reach_x - origin[0]) / dx) - nx) if dx > 0 else 0
 
     # --- Spatial bounds & padding checks ---
     if geom["first_src_x"] < model_min_x or geom["first_rec_x"] < model_min_x:
@@ -532,11 +532,11 @@ def analyze_config(config_path: Path, fast: bool = False) -> ConfigReport:
 
     cfl_fac = _cfl_factor_2d(fd_order)
     dt_crit_ms = (cfl_fac * min(dx, dz) / v_max) * 1000.0 if v_max > 0 else 0.0
-    nt_internal = int(math.ceil(ms / dt_crit_ms)) + 1 if dt_crit_ms > 0 else 1
+    nt_internal = math.ceil(ms / dt_crit_ms) + 1 if dt_crit_ms > 0 else 1
 
     f_nyquist_hz: float | None = None
     if fs_ms is not None and fs_ms > 0:
-        nt_out = int(round(ms / fs_ms)) + 1
+        nt_out = round(ms / fs_ms) + 1
         f_nyquist_hz = 500.0 / fs_ms
         if f_nyquist_hz < 1.5 * f0:
             checks.append(
@@ -766,8 +766,10 @@ def format_report(r: ConfigReport) -> str:
         f"  Task / Gather       : {r.task} / {r.gather}",
         f"  Velocity Model      : {r.model_source} ({r.velocity_source})",
         f"  Grid (nx x nz)      : {r.nx} x {r.nz}  (dx={r.dx:g} m, dz={r.dz:g} m)",
-        f"  Physical Extent     : X=[{r.model_min_x:.1f}, {r.model_max_x:.1f}] m, "
-        f"Z=[{r.model_min_z:.1f}, {r.model_max_z:.1f}] m",
+        (
+            f"  Physical Extent     : X=[{r.model_min_x:.1f}, {r.model_max_x:.1f}] m, "
+            f"Z=[{r.model_min_z:.1f}, {r.model_max_z:.1f}] m"
+        ),
         f"  Velocity [m/s]      : min={r.v_min:.1f}, mean={r.v_mean:.1f}, max={r.v_max:.1f}",
         "",
         "  [Acquisition Reach & Capacity]",
