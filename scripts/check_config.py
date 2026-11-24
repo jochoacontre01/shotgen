@@ -26,7 +26,6 @@ from typing import Any
 
 import numpy as np
 import yaml
-
 from shotgen.cli import _load_velocity_model_core
 from shotgen.utils import resolve_simulation_output_dir
 
