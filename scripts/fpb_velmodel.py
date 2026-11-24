@@ -141,6 +141,68 @@ def _compute_termination_weights(z_curve, taper_traces=60):
     return weights
 
 
+def _fit_compaction_trend(
+    bg_vel,
+    dz,
+    water_vel_max=1550.0,
+    basement_vel_min=4990.0,
+    poly_deg=2,
+):
+    """
+    Fit a smooth 1D sedimentary compaction trend as a function of depth below seafloor.
+
+    Returns
+    -------
+    trend_2d : np.ndarray
+        2D array of shape (nx, nz) giving the smooth background compaction velocity
+        below the seafloor, and 0.0 in the water column (where no compaction trend applies).
+    seafloor_iz : np.ndarray
+        1D integer array of length nx giving the detected seafloor depth index per trace.
+    """
+    _, nz = bg_vel.shape
+    z_grid = np.arange(nz, dtype=float) * dz
+
+    # Detect seafloor index per trace (first sample exceeding water velocity threshold)
+    above_water = bg_vel > water_vel_max
+    has_sed = np.any(above_water, axis=1)
+    seafloor_iz = np.where(has_sed, np.argmax(above_water, axis=1), 0)
+    z_sf = seafloor_iz.astype(float) * dz
+
+    # Depth below seafloor (m), 0 in water column
+    z_bsf = np.maximum(0.0, z_grid[None, :] - z_sf[:, None])
+
+    # Fit polynomial strictly on the sedimentary section (below water, above constant basement)
+    sed_mask = (bg_vel > water_vel_max) & (bg_vel < basement_vel_min)
+    if np.count_nonzero(sed_mask) < poly_deg + 1:
+        return np.zeros_like(bg_vel, dtype=float), seafloor_iz
+
+    z_fit = z_bsf[sed_mask]
+    v_fit = bg_vel[sed_mask]
+    z_max_sed = float(np.percentile(z_fit, 99.5))
+
+    coeffs = np.polyfit(z_fit, v_fit, deg=poly_deg)
+    poly = np.poly1d(coeffs)
+
+    # Evaluate smoothly across the sedimentary section, clamping z_bsf at the per-trace
+    # basement depth so the steeper sedimentary compaction gradient is not projected into
+    # the crystalline crust below basement.
+    below_base = bg_vel >= basement_vel_min
+    has_base = np.any(below_base, axis=1)
+    base_iz = np.where(has_base, np.argmax(below_base, axis=1), nz - 1)
+    z_base_bsf = np.minimum(np.maximum(0.0, (base_iz - seafloor_iz).astype(float) * dz), z_max_sed)
+    z_bsf_clamped = np.minimum(z_bsf, z_base_bsf[:, None])
+    trend_2d = poly(z_bsf_clamped)
+
+    # Assign constant reference water velocity in the water column so residuals remain
+    # consistently near zero everywhere (even if a horizon slightly straddles the seafloor).
+    water_mask = z_grid[None, :] < z_sf[:, None]
+    if np.any(water_mask):
+        water_ref_vel = float(np.median(bg_vel[water_mask]))
+        trend_2d[water_mask] = water_ref_vel
+
+    return trend_2d, seafloor_iz
+
+
 def discretize_velocity_model(
     bg_vel,
     horizon_depths,
@@ -149,9 +211,20 @@ def discretize_velocity_model(
     lateral_smooth_sigma=15.0,
     taper_traces=60,
     smooth_sigma=0.0,
+    detrend_compaction=True,
+    use_slowness=True,
+    compaction_deg=2,
+    water_vel_max=1550.0,
+    basement_vel_min=4990.0,
 ):
     """
     Discretize a smooth background velocity model into sharp horizon-bounded layers.
+
+    When ``detrend_compaction=True`` (Idea 1), a smooth global 1D sedimentary compaction
+    trend ``v_trend(z_bsf)`` (as a function of depth below seafloor) is removed prior to
+    per-layer aggregation and added back afterward. This decouples layer thickness variations
+    from lateral velocity changes while preserving realistic vertical compaction gradients
+    and crisp horizon impedance contrasts.
 
     Parameters
     ----------
@@ -162,7 +235,7 @@ def discretize_velocity_model(
     dz : float
         Vertical grid spacing in meters.
     stat : {"median", "mean"}
-        Statistic used to summarize background velocity within each layer at each trace.
+        Statistic used to summarize background velocity (or residual) within each layer.
     lateral_smooth_sigma : float
         Lateral Gaussian smoothing sigma (in traces) applied to the background model before
         layer aggregation, keeping vertical horizon jumps crisp while smoothing lateral jitter.
@@ -171,6 +244,17 @@ def discretize_velocity_model(
         vertical velocity steps.
     smooth_sigma : float
         Optional final 2D Gaussian smoothing sigma (in grid cells). Default 0.0 (crisp 1-cell steps).
+    detrend_compaction : bool
+        If True, remove a global depth-below-seafloor compaction trend before layer aggregation
+        and add it back afterward.
+    use_slowness : bool
+        If True, perform layer aggregation in slowness (1 / v) to preserve vertical traveltimes.
+    compaction_deg : int
+        Polynomial degree for the 1D sedimentary compaction trend (default 2).
+    water_vel_max : float
+        Velocity threshold (m/s) separating water column from sediments.
+    basement_vel_min : float
+        Upper velocity threshold (m/s) excluding constant basement from the sedimentary trend fit.
 
     Returns
     -------
@@ -185,13 +269,34 @@ def discretize_velocity_model(
     else:
         bg_work = bg_vel.astype(float)
 
+    if detrend_compaction:
+        trend_2d, _ = _fit_compaction_trend(
+            bg_work,
+            dz=dz,
+            water_vel_max=water_vel_max,
+            basement_vel_min=basement_vel_min,
+            poly_deg=compaction_deg,
+        )
+        has_trend = trend_2d > 0.0
+    else:
+        trend_2d = np.zeros_like(bg_work)
+        has_trend = np.zeros((nx, nz), dtype=bool)
+
+    if use_slowness:
+        work_field = np.where(has_trend, (1.0 / bg_work) - (1.0 / np.where(has_trend, trend_2d, 1.0)), 1.0 / bg_work)
+    else:
+        work_field = bg_work - trend_2d
+
     h_depths = np.asarray(horizon_depths, dtype=float)
     h_weights = np.array([_compute_termination_weights(h, taper_traces=taper_traces) for h in h_depths])
 
     disc_vel = np.empty((nx, nz), dtype=np.float32)
 
     for ix in range(nx):
-        col_bg = bg_work[ix]
+        col_work = work_field[ix]
+        col_trend = trend_2d[ix]
+        col_has_trend = has_trend[ix]
+
         valid_mask = ~np.isnan(h_depths[:, ix])
         iz_vals = np.clip(np.round(h_depths[valid_mask, ix] / dz).astype(int), 1, nz - 1)
         w_vals = h_weights[valid_mask, ix]
@@ -210,18 +315,28 @@ def discretize_velocity_model(
                 unique_w.append(w)
 
         bounds = [0] + unique_iz + [nz]
-        col_out = np.empty(nz, dtype=float)
+        col_agg = np.empty(nz, dtype=float)
 
         for a, b in itertools.pairwise(bounds):
-            col_out[a:b] = stat_fn(col_bg[a:b])
+            col_agg[a:b] = stat_fn(col_work[a:b])
 
         for k, (iz, w) in enumerate(zip(unique_iz, unique_w)):
             if w < 1.0:
                 a = bounds[k]
                 b = bounds[k + 2]
-                v_parent = stat_fn(col_bg[a:b])
-                col_out[a:iz] = (1.0 - w) * v_parent + w * col_out[a:iz]
-                col_out[iz:b] = (1.0 - w) * v_parent + w * col_out[iz:b]
+                v_parent = stat_fn(col_work[a:b])
+                col_agg[a:iz] = (1.0 - w) * v_parent + w * col_agg[a:iz]
+                col_agg[iz:b] = (1.0 - w) * v_parent + w * col_agg[iz:b]
+
+        if use_slowness:
+            col_slowness = np.where(
+                col_has_trend,
+                (1.0 / np.where(col_has_trend, col_trend, 1.0)) + col_agg,
+                col_agg,
+            )
+            col_out = 1.0 / np.maximum(col_slowness, 1e-6)
+        else:
+            col_out = col_trend + col_agg
 
         disc_vel[ix] = col_out
 
@@ -232,6 +347,11 @@ def discretize_velocity_model(
 
 
 base_dir = "assets/fpb_horizons"
+if not any(os.path.isfile(os.path.join(base_dir, f)) for f in os.listdir(base_dir)):
+    nested_dir = os.path.join(base_dir, "fpb_horizons")
+    if os.path.isdir(nested_dir):
+        base_dir = nested_dir
+
 horizons = {}
 for horizon in sorted(os.listdir(base_dir)):
     path = os.path.join(base_dir, horizon)
@@ -254,6 +374,9 @@ disc_vel = discretize_velocity_model(
     lateral_smooth_sigma=15.0,
     taper_traces=100,
     smooth_sigma=0.0,
+    detrend_compaction=True,
+    use_slowness=True,
+    compaction_deg=2,
 )
 
 # Below Horizon8: replace discretized median with linear gradient from last velocity above Horizon8
