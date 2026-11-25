@@ -7,6 +7,8 @@ import pandas as pd
 import segyio
 from scipy.interpolate import PchipInterpolator
 from scipy.ndimage import gaussian_filter, gaussian_filter1d
+from scipy.sparse import diags
+from scipy.sparse.linalg import LinearOperator, cg
 from scipy.spatial import cKDTree
 from shotgen.io import convert_npy_to_segy
 from shotgen.utils import setup_matplotlib_style
@@ -346,6 +348,186 @@ def discretize_velocity_model(
     return disc_vel
 
 
+def discretize_velocity_model_sparse(
+    bg_vel,
+    horizon_depths,
+    dz,
+    lambda_x=500.0,
+    lambda_z=1000.0,
+    taper_traces=60,
+    detrend_compaction=True,
+    use_slowness=True,
+    compaction_deg=2,
+    water_vel_max=1550.0,
+    basement_vel_min=4990.0,
+    max_solve_depth=None,
+    cg_rtol=1e-5,
+    cg_maxiter=1000,
+    smooth_sigma=0.0,
+):
+    """
+    Discretize a smooth background velocity model via a horizon-blocked 2D sparse solver (Idea 4).
+
+    Solves the symmetric positive-definite regularized least-squares system:
+
+        min_u  ||u - u_bg||_2^2 + lambda_x ||W_x D_x u||_2^2 + lambda_z ||W_z D_z u||_2^2
+
+    where ``u`` is the de-trended slowness (or velocity) residual, ``W_z`` drops to 0 across
+    interpreted horizons (allowing sharp vertical impedance jumps), and ``W_x`` drops to 0 on
+    horizontal edges crossed by dipping/faulted horizons (preventing cross-horizon smearing).
+    At partial-horizon terminations, weights taper smoothly back to 1 so the 2D solver blends
+    around horizon tips without vertical curtain artifacts.
+
+    Parameters
+    ----------
+    bg_vel : np.ndarray
+        Background velocity model of shape (nx, nz).
+    horizon_depths : list[np.ndarray]
+        List of 1D arrays of length nx giving horizon depth in meters (NaN where absent).
+    dz : float
+        Vertical grid spacing in meters.
+    lambda_x : float
+        Lateral smoothness weight within layers. Larger values enforce stronger lateral continuity.
+    lambda_z : float
+        Vertical uniformity weight within layers. Larger values push each layer closer to a
+        constant residual on top of the compaction trend.
+    taper_traces : int
+        Cosine taper width (in traces) at partial-horizon terminations.
+    detrend_compaction : bool
+        If True, remove a global depth-below-seafloor compaction trend before solving and add
+        it back afterward.
+    use_slowness : bool
+        If True, solve in slowness (1 / v) to conserve vertical traveltimes within bounded layers.
+    compaction_deg : int
+        Polynomial degree for the 1D sedimentary compaction trend.
+    water_vel_max : float
+        Velocity threshold (m/s) separating water column from sediments.
+    basement_vel_min : float
+        Upper velocity threshold (m/s) excluding constant basement from the sedimentary trend fit.
+    max_solve_depth : float or None
+        Optional maximum depth (m) for the 2D sparse solve (cells below copy ``bg_vel``).
+        Useful when deep crust/mantle below the deepest horizon is overwritten afterward.
+    cg_rtol : float
+        Relative convergence tolerance for Conjugate Gradient.
+    cg_maxiter : int
+        Maximum Conjugate Gradient iterations.
+    smooth_sigma : float
+        Optional final 2D Gaussian smoothing sigma (in grid cells). Default 0.0.
+
+    Returns
+    -------
+    np.ndarray
+        Discretized velocity model of shape (nx, nz), dtype float32.
+    """
+    nx, nz = bg_vel.shape
+    nz_s = nz if max_solve_depth is None else min(nz, max(2, int(np.ceil(max_solve_depth / dz))))
+
+    bg_work = bg_vel[:, :nz_s].astype(np.float64)
+
+    if detrend_compaction:
+        trend_2d, _ = _fit_compaction_trend(
+            bg_work,
+            dz=dz,
+            water_vel_max=water_vel_max,
+            basement_vel_min=basement_vel_min,
+            poly_deg=compaction_deg,
+        )
+        has_trend = trend_2d > 0.0
+    else:
+        trend_2d = np.zeros_like(bg_work)
+        has_trend = np.zeros((nx, nz_s), dtype=bool)
+
+    if use_slowness:
+        work_field = np.where(
+            has_trend,
+            (1.0 / bg_work) - (1.0 / np.where(has_trend, trend_2d, 1.0)),
+            1.0 / bg_work,
+        )
+    else:
+        work_field = bg_work - trend_2d
+
+    # Build 2D horizon-blocked edge weights in [0, 1]
+    wz = np.ones((nx, nz_s - 1), dtype=np.float64)
+    wx = np.ones((nx - 1, nz_s), dtype=np.float64)
+
+    for h in horizon_depths:
+        h_arr = np.asarray(h, dtype=float)
+        w_h = _compute_termination_weights(h_arr, taper_traces=taper_traces)
+
+        # Block vertical edges crossed by the horizon
+        valid = ~np.isnan(h_arr)
+        if np.any(valid):
+            ix_v = np.nonzero(valid)[0]
+            iz_v = np.round(h_arr[valid] / dz).astype(int)
+            in_bounds = (iz_v >= 1) & (iz_v < nz_s)
+            if np.any(in_bounds):
+                np.minimum.at(
+                    wz,
+                    (ix_v[in_bounds], iz_v[in_bounds] - 1),
+                    1.0 - w_h[ix_v[in_bounds]],
+                )
+
+        # Block horizontal edges crossed by dipping/faulted horizon segments
+        both = valid[:-1] & valid[1:]
+        if np.any(both):
+            ix_b = np.nonzero(both)[0]
+            iz0 = np.round(h_arr[ix_b] / dz).astype(int)
+            iz1 = np.round(h_arr[ix_b + 1] / dz).astype(int)
+            dipping = iz0 != iz1
+            if np.any(dipping):
+                w_pair = np.minimum(w_h[ix_b[dipping]], w_h[ix_b[dipping] + 1])
+                for ix, a, b, wp in zip(ix_b[dipping], iz0[dipping], iz1[dipping], w_pair):
+                    lo = max(0, min(a, b))
+                    hi = min(nz_s, max(a, b))
+                    if lo < hi:
+                        wx[ix, lo:hi] = np.minimum(wx[ix, lo:hi], 1.0 - wp)
+
+    # Assemble SPD system: (I + lambda_x * L_x + lambda_z * L_z) u = work_field
+    diag = np.ones((nx, nz_s), dtype=np.float64)
+    diag[:, :-1] += lambda_z * wz
+    diag[:, 1:] += lambda_z * wz
+    diag[:-1, :] += lambda_x * wx
+    diag[1:, :] += lambda_x * wx
+
+    wz_pad = np.pad(wz, ((0, 0), (0, 1)), constant_values=0.0)
+    off_z = (-lambda_z * wz_pad.ravel())[:-1]
+    off_x = -lambda_x * wx.ravel()
+    diag_flat = diag.ravel()
+
+    n_total = nx * nz_s
+    mat_a = diags(
+        [off_x, off_z, diag_flat, off_z, off_x],
+        offsets=[-nz_s, -1, 0, 1, nz_s],
+        shape=(n_total, n_total),
+        format="csr",
+    )
+
+    inv_diag = 1.0 / diag_flat
+    precond = LinearOperator((n_total, n_total), matvec=lambda v: inv_diag * v, dtype=np.float64)
+
+    rhs = work_field.ravel()
+    sol_flat, _ = cg(mat_a, rhs, x0=rhs, rtol=cg_rtol, maxiter=cg_maxiter, M=precond)
+    sol_agg = sol_flat.reshape((nx, nz_s))
+
+    if use_slowness:
+        sol_slowness = np.where(
+            has_trend,
+            (1.0 / np.where(has_trend, trend_2d, 1.0)) + sol_agg,
+            sol_agg,
+        )
+        sol_vel = 1.0 / np.maximum(sol_slowness, 1e-6)
+    else:
+        sol_vel = trend_2d + sol_agg
+
+    disc_vel = bg_vel.astype(np.float32, copy=True)
+    disc_vel[:, :nz_s] = sol_vel.astype(np.float32)
+
+    if smooth_sigma > 0:
+        disc_vel = gaussian_filter(disc_vel, sigma=smooth_sigma).astype(np.float32)
+
+    return disc_vel
+
+
 base_dir = "assets/fpb_horizons"
 if not any(os.path.isfile(os.path.join(base_dir, f)) for f in os.listdir(base_dir)):
     nested_dir = os.path.join(base_dir, "fpb_horizons")
@@ -366,17 +548,20 @@ all_boundaries = [z_plot for _, z_plot in horizons.values()] + [
     moho_boundary * dz,
 ]
 
-disc_vel = discretize_velocity_model(
+# Solve only down to just below the deepest interpreted horizon (deep crust/Moho is overwritten below)
+max_horizon_depth = max(float(np.nanmax(z_plot)) for _, z_plot in horizons.values()) + 500.0
+
+disc_vel = discretize_velocity_model_sparse(
     new_array,
     all_boundaries,
     dz=dz,
-    stat="median",
-    lateral_smooth_sigma=15.0,
-    taper_traces=100,
-    smooth_sigma=0.0,
+    lambda_x=500.0,
+    lambda_z=5000.0,
+    taper_traces=60,
     detrend_compaction=True,
     use_slowness=True,
     compaction_deg=2,
+    max_solve_depth=max_horizon_depth,
 )
 
 # Below Horizon8: replace discretized median with linear gradient from last velocity above Horizon8
