@@ -3,26 +3,26 @@
     "velocity_model": "CA-3000991-GOA_PSDM_Vel_RL_IL10249_XL4923_to_IL7796_XL7908_moho_discretized.segy",
     "meters_per_cell": 1.0,
     "float_type": "float32",
-    "dx": 15.0,
-    "dz": 20.0,
+    "dx": 3.0,
+    "dz": 4.0,
     "max_size": [44790.0, 35000.0],
     "n_sources": 101.0,
-    "n_receivers": 48.0,
+    "n_receivers": 96.0,
     "ms": 12000.0,
-    "f0": 4.0,
+    "f0": 25.0,
     "src_origin": [
-        20000.0,
+        0.0,
         0.0
       ],
     "rec_origin": [
-        20000.0,
+        0.0,
         20.0
       ],
     "origin": [
-        20000.0,
+        0.0,
         0.0
       ],
-    "group_offset": 60.0,
+    "group_offset": 18.0,
     "shot_offset": 100.0,
     "gather": "common shot",
     "smooth": 1,
