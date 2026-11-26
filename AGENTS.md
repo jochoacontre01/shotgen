@@ -174,7 +174,7 @@ All simulation tasks — including `shotgen-gpu` (Devito/OpenACC), `shotgen-core
   - `data/bpsalt_cs_100s_48r_15hz_9f8e7d6c`
   - `data/simulations/ca30009_moho_disc_cs_23s_48r_10hz_4c2a1f9e`
 - **Artifacts Inside Dataset Directories** (keep filenames `<= 48` chars):
-  - Standard outputs: `traces.segy`, `velocity_model.segy`, `smooth_velocity.segy`, `metadata.h5`, `simulation_results.h5`, `<config>.json`.
+  - Standard outputs: `traces.segy`, `velocity_model.segy`, `smooth_velocity.segy`, `metadata.h5`, `<config>.json`.
   - Run logs & migrated outputs: `%Y%m%d_%H%M%S_<script_name>.log`, `%Y%m%d_%H%M%S_<artifact>.npy`.
   - Animations: `source_<idx>.mp4`, `wavefield_arrays/source_<idx>.npz`.
   - Standalone migrated files in `data/migrated/`: `<dataset_dir>_<method>.npy` (e.g., `<dir>_kirchhoff.npy`).

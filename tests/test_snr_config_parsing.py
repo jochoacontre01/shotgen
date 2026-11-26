@@ -94,6 +94,7 @@ def test_full_config_parsing_gpu(tmp_path):
     assert out_dir.exists()
     assert (out_dir / "traces.segy").exists()
     assert (out_dir / "metadata.h5").exists()
+    assert not (out_dir / "simulation_results.h5").exists()
 
     loaded = LoadShotRecord(str(out_dir))
     assert loaded.snr is not None

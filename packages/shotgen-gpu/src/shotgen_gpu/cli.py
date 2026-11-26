@@ -6,7 +6,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import h5py
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from shotgen.io import SegyIO
@@ -346,28 +345,8 @@ def _run_simulation_cli(cfg: dict, cli_enabled: bool = False, verbose: bool = Fa
     shot_rec.time_vector = np.linspace(0, ms / 1000.0, shot_run.shape[-1])
     shot_rec.save_shot(str(output_dir), config_file=config_file)
 
-    # Save output to HDF5 container for backwards compatibility
-    out_h5 = output_dir / "simulation_results.h5"
-    with h5py.File(out_h5, "w") as f:
-        f.create_dataset("shots", data=shot_run)
-        f.create_dataset("sources", data=sources)
-        f.create_dataset("receivers", data=receivers)
-        f.create_dataset("vel", data=vel)
-        if wavelet is not None:
-            f.create_dataset("wavelet", data=wavelet)
-        f.create_dataset("nx", data=nx)
-        f.create_dataset("nz", data=nz)
-        if fs_ms is not None:
-            f.create_dataset("fs_ms", data=fs_ms)
-        if snr is not None:
-            f.create_dataset("snr", data=snr)
-        f.create_dataset("dx", data=dx)
-        f.create_dataset("dz", data=dz)
-        f.create_dataset("ms", data=ms)
-        f.create_dataset("f0", data=f0)
-
     t_elapsed = time.time() - t_start
-    print(f"[shotgen-gpu CLI] Wavefield simulation complete! SEGY and HDF5 written to: {output_dir}")
+    print(f"[shotgen-gpu CLI] Wavefield simulation complete! SEGY and metadata HDF5 written to: {output_dir}")
     if verbose:
         print(f"[shotgen-gpu CLI] GPU runtime: {t_elapsed:.3f} s")
 

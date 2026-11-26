@@ -458,14 +458,26 @@ class ShotRecord:
 
                     run_gpu_simulation_dict(cfg)
 
-                    res_h5 = os.path.join(tmp_dir, "simulation_results.h5")
-                    if os.path.exists(res_h5):
-                        with h5py.File(res_h5, "r") as f:
-                            self.shot_run = f["shots"][()]
+                    traces_path = os.path.join(tmp_dir, "traces.segy")
+                    meta_path = os.path.join(tmp_dir, "metadata.h5")
+                    if not os.path.exists(traces_path):
+                        raise RuntimeError("GPU Simulation failed to write traces.segy")
+
+                    segy_data = SegyIO.read(traces_path, verbose=False)
+                    flat_data = segy_data["data"]
+                    n_traces, n_time = flat_data.shape
+                    n_src = len(self.sources) if getattr(self, "sources", None) is not None else int(self.n_sources)
+                    if n_src > 0 and n_traces % n_src == 0:
+                        self.shot_run = flat_data.reshape((n_src, n_traces // n_src, n_time)).astype(
+                            self.float_type, copy=False
+                        )
+                    else:
+                        self.shot_run = flat_data.astype(self.float_type, copy=False)
+
+                    if os.path.exists(meta_path):
+                        with h5py.File(meta_path, "r") as f:
                             if "wavelet" in f:
                                 self.src = f["wavelet"][()]
-                    else:
-                        raise RuntimeError("GPU Simulation failed to write simulation_results.h5")
             else:
                 self._execute_pylops(ms)
                 if self.snr is not None:
