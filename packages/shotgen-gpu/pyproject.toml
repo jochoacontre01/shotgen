@@ -35,3 +35,6 @@ shotgen-gpu = "shotgen_gpu.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+shotgen_gpu = ["calibration.json"]

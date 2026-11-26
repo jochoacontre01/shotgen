@@ -134,13 +134,23 @@ def _load_velocity_model(cfg: dict):
 
 def main():
     parser = argparse.ArgumentParser(description="shotgen-gpu: Devito/OpenACC wavefield propagation & RTM CLI")
-    parser.add_argument("--config", "-c", type=str, required=True, help="Path to JSON configuration file")
+    parser.add_argument("--config", "-c", type=str, default=None, help="Path to JSON configuration file")
     parser.add_argument("--cli", action="store_true", help="Display the first shot record on the terminal using chafa after simulation")
     parser.add_argument("-v", "--verbose", action="store_true", help="Display GPU runtime and verbose simulation output when complete")
+    parser.add_argument("--estimate-time", action="store_true", help="Estimate GPU runtime and VRAM usage for the config and exit (dry-run)")
+    parser.add_argument("--calibrate", action="store_true", help="Run a quick synthetic GPU benchmark to calibrate runtime estimates and save to calibration.json")
     parser.add_argument("--t-start", type=float, default=None, help="Start time of migration window in ms (suppresses early-time direct arrivals)")
     parser.add_argument("--t-end", type=float, default=None, help="End time of migration window in ms")
     parser.add_argument("--t-taper", type=float, default=None, help="Cosine taper duration in ms at window edges (default: 50.0 ms)")
     args = parser.parse_args()
+
+    if args.calibrate:
+        from shotgen_gpu.estimator import run_calibration
+        run_calibration(device="auto", verbose=args.verbose)
+        return
+
+    if not args.config:
+        parser.error("the following arguments are required: --config/-c (unless --calibrate is used)")
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -149,6 +159,12 @@ def main():
 
     with open(config_path, "r") as f:
         cfg = json.load(f)
+
+    if args.estimate_time:
+        from shotgen_gpu.estimator import estimate_runtime, format_estimate_report
+        estimate = estimate_runtime(cfg)
+        print(format_estimate_report(estimate))
+        return
 
     verbose_enabled = args.verbose or cfg.get("verbose", False)
 

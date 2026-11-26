@@ -1,0 +1,26 @@
+{
+  "gpus": {
+    "NVIDIA RTX 4000 SFF Ada Generation": {
+      "calibrated_at": "2026-11-26T14:09:08",
+      "compute_cap": "8.9",
+      "rtm": {
+        "float64_factor": 2.0,
+        "gcells_per_s_order4": 1.0105,
+        "jit_compile_s": 0.797,
+        "order_exponent": 0.289,
+        "per_shot_overhead_s": 0.4305,
+        "save_wavefield_multiplier": 1.35
+      },
+      "simulation": {
+        "float64_factor": 2.0,
+        "gcells_per_s_order4": 4.3571,
+        "jit_compile_s": 0.5,
+        "order_exponent": 1.397,
+        "per_shot_overhead_s": 0.7894,
+        "save_wavefield_multiplier": 1.65
+      },
+      "vram_mib": 20475.0
+    }
+  },
+  "schema_version": 1
+}
